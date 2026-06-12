@@ -23,10 +23,8 @@ from pymrm import (
 )
 
 from config import ModelConfig
-from buildoperators import TransportOperators
 
 cfg = ModelConfig()
-build = TransportOperators(cfg)
 
 
 STOICH = np.array(

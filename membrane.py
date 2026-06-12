@@ -24,6 +24,11 @@ from pymrm import (
 
 from config import ModelConfig
 from buildoperators import TransportOperators
+from reaction import ReactionRates
+
+cfg = ModelConfig()
+build = TransportOperators(cfg)
+reaction = ReactionRates(cfg)
 
 STOICH = np.array(
     [

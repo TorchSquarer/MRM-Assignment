@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
 for candidate in (Path.cwd(), Path.cwd().parent):
     pymrm_src = candidate / "pymrm" / "src"
     if pymrm_src.exists() and str(pymrm_src) not in sys.path:
@@ -24,7 +23,6 @@ from pymrm import (
 
 from config import ModelConfig
 cfg = ModelConfig()
-
 
 class TransportOperators:
     def __init__(self, cfg: ModelConfig) -> None:
