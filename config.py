@@ -81,11 +81,15 @@ class ModelConfig:
 
 
     def K_ads(self, K_ref: float, dH: float) -> float:
-        return K_ref * np.exp((-dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
+        return K_ref * np.exp((-dH / self.R) * (1.0 / self.T1_ref - 1.0 / self.T))
 
     def k_eff_r1(self):
         return self.k1_pre * np.exp(
-            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
+            (self.Ea_1 / self.R) * (1.0 / self.T1_ref - 1.0 / self.T))
+
+    def k_eff_r2(self):
+        return self.k2_pre * np.exp(
+            (self.Ea_2 / self.R) * (1.0 / self.T2_ref - 1.0 / self.T))
 
     def k_eq_r2(self):
         ln_Keq = (-self.dG_DMC / (self.R * self.T2_ref)) + \
