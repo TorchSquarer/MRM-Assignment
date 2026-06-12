@@ -21,7 +21,6 @@ from pymrm import (
     non_uniform_grid,
 )
 
-
 @dataclass
 class ModelConfig:
     length: float = 1 # length [m]
@@ -68,7 +67,7 @@ class ModelConfig:
     k2_eq: float = 44.5e-14  # Equilibrium constant at 400 K [-]
     Ea_DMC: float = 106e3  # Activation energy [J/mol]
     dV: float = -3.775e-4  # Reaction volume change [m³/mol]
-    
+    rho_cat: float = 1500 # Catalyst density [kg/m³]
 
     inlet_concentration: np.ndarray = field(default_factory=lambda: np.array([900, 2700, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
 
@@ -97,8 +96,14 @@ class ModelConfig:
     @property # membrane area per unit volume of the permeate (2 π R_ret L / (π (R_out² - R_perm²) L) = 2 R_ret / (R_out² - R_perm²))
     def a_perm(self):
         return 2.0 * self.R_ret / (self.R_out**2 - self.R_perm**2)
+    
+    @property
+    def rho_bulk(self):
+        return (1-self.eps_s) * self.rho_cat
+    
 
 cfg = ModelConfig()
+
 
 pd.Series(
     {
@@ -115,4 +120,6 @@ pd.Series(
         },
     name="settings",
 )
+
+print(cfg.rho_bulk)
 
