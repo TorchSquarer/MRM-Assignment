@@ -29,8 +29,8 @@ class ModelConfig:
     R_out: float = 7e-3 # outer radius [m]
 
     P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.002, 0.000])) # membrane permeability
-    v_ret: float = 1.0e-3 # velocity of retentate [m/s]
-    v_perm: float = 1.0e-3 # velocity of permeate [m/s]
+    v_ret: float = 1 # velocity of retentate [m/s]
+    v_perm: float = 1e-1 # velocity of permeate [m/s]
     d_ax: float = 2.0e-5 # dispersion in the axial direction 
     
     n_z: int = 100 # number of grid points in the axial direction
@@ -67,7 +67,7 @@ class ModelConfig:
     k2_pre: float = 0.8  # Pre-exponential factor [s⁻¹]
     k_ads1: float = 9
     k_ads2: float = 109
-    Ea_DMC: float = 106e3  # Activation energy [J/mol]
+    Ea_2: float = 106e3  # Activation energy [J/mol]
     dH_DMC: float = -20e3
     dG_DMC: float = 31e3
     
@@ -79,22 +79,16 @@ class ModelConfig:
     tol: float = 1.0e-6  # tolerance for convergence
     maxfev: int = 30    # maximum number of function evaluations
 
-
-    def K_ads(self, K_ref: float, dH: float) -> float:
-        return K_ref * np.exp((-dH / self.R) * (1.0 / self.T1_ref - 1.0 / self.T))
-
-    def k_eff_r1(self):
+    def k_eff_r1(self) -> float:
         return self.k1_pre * np.exp(
-            (self.Ea_1 / self.R) * (1.0 / self.T1_ref - 1.0 / self.T))
-
-    def k_eff_r2(self):
+            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
+    
+    def k_eff_r2(self, P_total_Pa: float | np.ndarray) -> float | np.ndarray:
         return self.k2_pre * np.exp(
-            (self.Ea_2 / self.R) * (1.0 / self.T2_ref - 1.0 / self.T))
-
-    def k_eq_r2(self):
-        ln_Keq = (-self.dG_DMC / (self.R * self.T2_ref)) + \
-                 (self.dH_DMC / (self.R * self.T2_ref)) * (1.0 - (self.T2_ref / self.T))
-        return float(np.exp(ln_Keq))
+            (-self.Ea_DMC - self.dV * (P_total_Pa - self.p_0)) / (self.R * self.T))
+    
+    def K_ads(self, K_ref: float, dH: float) -> float:
+        return K_ref * np.exp((-dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
 
     @property # external paricle surface area per unit bed volume
     def external_area(self):
