@@ -17,13 +17,13 @@ class ReactionRates:
     def reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig) -> tuple[np.ndarray, np.ndarray]:
         RT = cfg.R * cfg.T
         P_Pa = c_p * RT                  # partial pressures [Pa], shape (n_z, n_r_ret, n_c)
-        P_bar = P_Pa /1e5
 
-        P_CO2 = P_bar[..., 0]
-        P_H2 = P_bar[..., 1]
-        P_CH3OH = P_bar[..., 2]
-        P_H2O = P_bar[..., 3]
-        P_DMC = P_bar[..., 4]     
+        P_CO2 = P_Pa[..., 0]
+        P_H2 = P_Pa[..., 1]
+        P_CH3OH = P_Pa[..., 2]
+        P_H2O = P_Pa[..., 3]
+        P_DMC = P_Pa[..., 4]
+        P_total_Pa = P_Pa.sum(axis=-1)      
 
         # R1: CO2 + 3H2 <-> CH3OH + H2O
         alpha_1 = P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / cfg.k1_eq

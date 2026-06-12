@@ -26,10 +26,6 @@ from config import ModelConfig
 from buildoperators import TransportOperators
 from reaction import ReactionRates
 
-cfg = ModelConfig()
-build = TransportOperators(cfg)
-reaction = ReactionRates(cfg)
-
 STOICH = np.array(
     [
         [-1.0, -3.0,  1.0,  1.0,  0.0],  # R1: CO2 + 3H2 <-> CH3OH + H2O
