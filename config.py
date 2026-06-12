@@ -65,9 +65,13 @@ class ModelConfig:
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
     k2_pre: float = 1.15e-3  # Pre-exponential factor [s⁻¹]
     k2_eq: float = 44.5e-14  # Equilibrium constant at 400 K [-]
+    k_ads1: float = 9
+    k_ads2: float = 109
     Ea_DMC: float = 106e3  # Activation energy [J/mol]
     dV: float = -3.775e-4  # Reaction volume change [m³/mol]
     rho_cat: float = 1500 # Catalyst density [kg/m³]
+    p_stand: float = 20e6
+    m_cat: float = 4.6
 
     inlet_concentration: np.ndarray = field(default_factory=lambda: np.array([900, 2700, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
 
@@ -121,5 +125,4 @@ pd.Series(
     name="settings",
 )
 
-print(cfg.rho_bulk)
 
