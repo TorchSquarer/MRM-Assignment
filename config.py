@@ -51,9 +51,10 @@ class ModelConfig:
     D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
     p: float = 30e5  # Operational Pressure [Pa]
     p_0: float = 200e5  # Reference Pressure for volume change [Pa]
+    p_stand: float = 1e5
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
-    T1_ref: float = 573.15  # Reference temperature [K] (300 °C)
+    T_ref: float = 573.15  # Reference temperature [K] (300 °C)
     k1_pre: float = 6.9e-4  # Forward rate constant at T_ref [mol/(s·bar²·kg_cat)]
     k1_eq: float = 2.5e-4  # Equilibrium constant at T_ref [bar⁻²]
     Ea_1: float = 35.7e3  # Activation energy [J/mol]
@@ -63,13 +64,14 @@ class ModelConfig:
     dH_H2: float = -12.5e3  # Enthalpy of adsorption for H2 [J/mol]
 
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
-    T2_ref: float = 298.15
     k2_pre: float = 0.8  # Pre-exponential factor [s⁻¹]
     k_ads1: float = 9
     k_ads2: float = 109
-    Ea_2: float = 106e3  # Activation energy [J/mol]
+    k2_eq: float = 3e-4 # guessed value
+    Ea_DMC: float = 106e3  # Activation energy [J/mol]
     dH_DMC: float = -20e3
     dG_DMC: float = 31e3
+    dV: float = 1.5e-5 # placeholder
     
     rho_cat: float = 1500 # Catalyst density [kg/m³]
     m_cat: float = 4.6
