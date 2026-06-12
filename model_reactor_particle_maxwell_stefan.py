@@ -48,8 +48,8 @@ class ReactorParticleMaxwellStefanModel:
             {"a": 0.0, "b": 1.0, "d":cfg.inlet_concentration}, # dirchlet
             {"a": 1.0, "b": 0.0, "d": 0.0}, # Neumann
         )
-        grad_mat_ret, grad_bc_ret = construct_grad(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, axis=0)
-        conv_mat_ret, conv_bc_ret = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, v=cfg.v_ret, axis=0)
+        grad_mat_ret, grad_bc_ret = construct_grad(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, axis=0) # type: ignore
+        conv_mat_ret, conv_bc_ret = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, v=cfg.v_ret, axis=0) # type: ignore
         div_mat_ret = construct_div(self.gas_shape, self.z_f, axis=0)
         d_ax_mat_ret = construct_coefficient_matrix(cfg.d_ax, self.gas_shape, axis=0)
         self.gas_transport_mat = div_mat_ret @ (conv_mat_ret - d_ax_mat_ret @ grad_mat_ret)
@@ -61,7 +61,7 @@ class ReactorParticleMaxwellStefanModel:
         )
 
         #shape of div and grad: (n_z * n_r_ret * n_c, n_z * n_r_ret * n_c), shape of grad_bc: (n_z * 1 * n_c, n_z * n_r_ret * n_c)
-        grad_p_mat, _, grad_p_bc = construct_grad(self.particle_shape, self.r_f_ret, self.r_c_ret, bc=bc_particle, axis=1, shapes_d=(None, self.boundary_shape),)
+        grad_p_mat, _, grad_p_bc = construct_grad(self.particle_shape, self.r_f_ret, self.r_c_ret, bc=bc_particle, axis=1, shapes_d=(None, self.boundary_shape),) # type: ignore
         div_p_mat = construct_div(self.particle_shape, self.r_f_ret, nu=2, axis=1)
         d_p = cfg.particle_diffusivity.reshape(1, 1, cfg.n_c)
         d_p_mat = construct_coefficient_matrix(d_p, self.particle_shape, axis=1)
@@ -84,7 +84,7 @@ class ReactorParticleMaxwellStefanModel:
             {"a": 0.0, "b": 1.0, "d": 0.0}, # c_m = 0 at z = 0 (Dirichlet)
             {"a": 1.0, "b": 0.0, "d": 0.0}, # dc_m/dz = 0 at z = L (Neumann)
         )
-        conv_mat_m, conv_bc_m = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_permeate, v=cfg.v_perm, axis=0)
+        conv_mat_m, conv_bc_m = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_permeate, v=cfg.v_perm, axis=0) # type: ignore
         div_mat_m = construct_div(self.gas_shape, self.z_f, axis=0)
         self.perm_transport_mat = div_mat_m @ conv_mat_m
         self.perm_transport_const = div_mat_m @ conv_bc_m 
