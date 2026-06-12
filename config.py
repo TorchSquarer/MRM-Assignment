@@ -109,20 +109,6 @@ class ModelConfig:
 cfg = ModelConfig()
 
 
-pd.Series(
-    {
-            "axial cells":               cfg.n_z,
-            "particle radial cells":     cfg.n_r_ret,
-            "reactor length [m]":        cfg.length,
-            "v_ret [m/s]":               cfg.v_ret,
-            "v_perm [m/s]":              cfg.v_perm,
-            "particle radius [mm]":      1e3 * cfg.particle_radius,
-            "solid holdup [-]":          cfg.eps_s,
-            "external area [1/m]":       cfg.external_area,
-            "retentate area [1/m]":      cfg.a_ret,
-            "permeate area [1/m]":       cfg.a_perm,
-        },
-    name="settings",
-)
+
 
 
