@@ -18,8 +18,8 @@ class ReactionRates:
         RT = cfg.R * cfg.T
         P_Pa = c_p * RT                  # partial pressures [Pa], shape (n_z, n_r_ret, n_c)
 
-        P_CO2 = P_Pa[..., 0]
-        P_H2 = P_Pa[..., 1]
+        P_CO2 =      P_Pa[..., 0]
+        P_H2 =      P_Pa[..., 1]
         P_CH3OH = P_Pa[..., 2]
         P_H2O = P_Pa[..., 3]
         P_DMC = P_Pa[..., 4]

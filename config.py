@@ -23,13 +23,13 @@ from pymrm import (
 
 @dataclass
 class ModelConfig:
-    length: float = 1 # length [m]
-    R_ret: float = 5e-3 # radius of retentate [m]
+    length: float = 5 # length [m]
+    R_ret: float = 10.0e-3 # radius of retentate [m]
     R_perm: float = R_ret + 5e-4 # radius of permeate [m]
-    R_out: float = 7e-3 # outer radius [m]
+    R_out: float = 12e-3 # outer radius [m]
 
     P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.002, 0.000])) # membrane permeability
-    v_ret: float = 1 # velocity of retentate [m/s]
+    v_ret: float = 0.1 # velocity of retentate [m/s]
     v_perm: float = 1e-1 # velocity of permeate [m/s]
     d_ax: float = 2.0e-5 # dispersion in the axial direction 
     
@@ -43,7 +43,9 @@ class ModelConfig:
     particle_diffusivity: np.ndarray = field(
         default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6])
     )  # Diffusivity per component [m²/s]
-    eps_s: float = 0.4  # Solid holdup (catalyst bed voidage component) [-]
+    eps_s: float = 0.4  # Solid holdup (volume fraction catalyst) [-]
+    eps_p: float = 0.5  # film porosity / active sites [-]
+    rho_cat: float = 7215 # Catalyst density [kg/m³]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
     dp: float = 2.0e-3  # Particle diameter [m]
     T: float = 400.0  # Operating temperature [K]
@@ -72,9 +74,6 @@ class ModelConfig:
     dH_DMC: float = -20e3
     dG_DMC: float = 31e3
     dV: float = 1.5e-5 # placeholder
-    
-    rho_cat: float = 1500 # Catalyst density [kg/m³]
-    m_cat: float = 4.6
 
     inlet_concentration: np.ndarray = field(default_factory=lambda: np.array([900, 2700, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
 
@@ -105,9 +104,14 @@ class ModelConfig:
         return 2.0 * self.R_ret / (self.R_out**2 - self.R_perm**2)
     
     @property
-    def rho_bulk(self):
-        return (1-self.eps_s) * self.rho_cat
-    
+    def rho_bulk(self) -> float:
+        return self.eps_s * self.eps_p * self.rho_cat
+
+    @property
+    def m_cat(self) -> float:
+        V_buis = np.pi * self.R_ret**2 * self.length
+        return self.rho_bulk * V_buis
+        
 
 cfg = ModelConfig()
 

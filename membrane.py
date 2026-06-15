@@ -141,7 +141,7 @@ class MembraneReactorModel:
         r1_surface = r1_surf_full[:, 0]   
         r2_surface = r2_surf_full[:, 0]   
 
-        eta_r1 = -r1_apparent / np.maximum(r1_surface, 1.0e-30)
-        eta_r2 = -r2_apparent / np.maximum(r2_surface, 1.0e-30)
+        eta_r1 = r1_apparent / np.maximum(r1_surface, 1.0e-30)
+        eta_r2 = r2_apparent / np.maximum(r2_surface, 1.0e-30)
         return eta_r1, eta_r2, r1_surface, r2_surface
 
