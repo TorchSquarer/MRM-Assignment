@@ -2,39 +2,27 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 for candidate in (Path.cwd(), Path.cwd().parent):
     pymrm_src = candidate / "pymrm" / "src"
     if pymrm_src.exists() and str(pymrm_src) not in sys.path:
         sys.path.insert(0, str(pymrm_src))
 
-from pymrm import (
-    NumJac,
-    construct_coefficient_matrix,
-    construct_convflux_upwind,
-    construct_div,
-    construct_grad,
-    newton,
-    non_uniform_grid,
-)
-
 @dataclass
 class ModelConfig:
     # reactor model
-    length: float = 15 # length [m]
+    length: float = 20 # length [m]
     R_ret: float = 10.0e-3 # radius of retentate [m]
     R_perm: float = R_ret + 5e-4 # radius of permeate [m]
     R_out: float = 12e-3 # outer radius [m]
 
-    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.000, 0.000])) # Membrane permeability
+    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.001, 0.000])) # Membrane permeability
     v_ret: float = 0.05 # velocity of retentate [m/s]
-    v_perm: float = 0.05 # velocity of permeate [m/s]
+    v_perm: float = 0.1 # velocity of permeate [m/s]
     d_ax: float = 2.0e-5 # dispersion in the axial direction 
     
-    n_z: int = 100 # number of grid points in the axial direction
+    n_z: int = 200 # number of grid points in the axial direction
     n_r_perm: int = 30 # number of grid points in the radial direction of permeate
     n_r_ret: int = 30 # number of grid points in the radial direction of retentate
     n_c: int = 5 # number of components
