@@ -23,14 +23,15 @@ from pymrm import (
 
 @dataclass
 class ModelConfig:
-    length: float = 5 # length [m]
+    # reactor model
+    length: float = 15 # length [m]
     R_ret: float = 10.0e-3 # radius of retentate [m]
     R_perm: float = R_ret + 5e-4 # radius of permeate [m]
     R_out: float = 12e-3 # outer radius [m]
 
-    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.002, 0.000])) # membrane permeability
-    v_ret: float = 0.1 # velocity of retentate [m/s]
-    v_perm: float = 1e-1 # velocity of permeate [m/s]
+    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.000, 0.000])) # Membrane permeability
+    v_ret: float = 0.05 # velocity of retentate [m/s]
+    v_perm: float = 0.05 # velocity of permeate [m/s]
     d_ax: float = 2.0e-5 # dispersion in the axial direction 
     
     n_z: int = 100 # number of grid points in the axial direction
@@ -39,21 +40,22 @@ class ModelConfig:
     n_c: int = 5 # number of components
 
     # Catalyst & Thermodynamic Parameters
+    T: float = 573.15  # Operating temperature [K]
+    R: float = 8.314  # Ideal gas constant [J/(mol·K)]
+    D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
+    p: float = 50e5  # Operational Pressure [Pa]
+    p_0: float = 200e5  # Reference Pressure for volume change [Pa]
+    p_stand: float = 1e5 # 1 bar in Pa
+
+    tau: float = length / v_ret
+
     particle_radius: float = 1.0e-3  # Catalyst particle radius [m]
-    particle_diffusivity: np.ndarray = field(
-        default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6])
-    )  # Diffusivity per component [m²/s]
+    particle_diffusivity: np.ndarray = field(default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6]))  # Diffusivity per component [m²/s]
     eps_s: float = 0.4  # Solid holdup (volume fraction catalyst) [-]
     eps_p: float = 0.5  # film porosity / active sites [-]
     rho_cat: float = 7215 # Catalyst density [kg/m³]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
     dp: float = 2.0e-3  # Particle diameter [m]
-    T: float = 400.0  # Operating temperature [K]
-    R: float = 8.314  # Ideal gas constant [J/(mol·K)]
-    D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
-    p: float = 30e5  # Operational Pressure [Pa]
-    p_0: float = 200e5  # Reference Pressure for volume change [Pa]
-    p_stand: float = 1e5
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
     T_ref: float = 573.15  # Reference temperature [K] (300 °C)
@@ -67,29 +69,25 @@ class ModelConfig:
 
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
     k2_pre: float = 0.8  # Pre-exponential factor [s⁻¹]
+    k2_eq: float = 3e-4 # guessed value
     k_ads1: float = 9
     k_ads2: float = 109
-    k2_eq: float = 3e-4 # guessed value
     Ea_DMC: float = 106e3  # Activation energy [J/mol]
-    dH_DMC: float = -20e3
-    dG_DMC: float = 31e3
-    dV: float = 1.5e-5 # placeholder
+    dV: float = 0.0
+    r2_scale: float = 1.0
 
-    inlet_concentration: np.ndarray = field(default_factory=lambda: np.array([900, 2700, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
+    feed_y: np.ndarray = field(default_factory=lambda: np.array([0.25, 0.75, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
 
     tol: float = 1.0e-6  # tolerance for convergence
     maxfev: int = 30    # maximum number of function evaluations
 
-    def k_eff_r1(self) -> float:
-        return self.k1_pre * np.exp(
-            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
-    
-    def k_eff_r2(self, P_total_Pa: float | np.ndarray) -> float | np.ndarray:
-        return self.k2_pre * np.exp(
-            (-self.Ea_DMC - self.dV * (P_total_Pa - self.p_0)) / (self.R * self.T))
-    
-    def K_ads(self, K_ref: float, dH: float) -> float:
-        return K_ref * np.exp((-dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T))
+    @property
+    def inlet_concentration(self):
+        feed_y = np.asarray(self.feed_y, dtype=float)
+        feed_y = feed_y / np.sum(feed_y)
+
+        c_total = self.p / (self.R * self.T)
+        return c_total * feed_y
 
     @property # external paricle surface area per unit bed volume
     def external_area(self):
@@ -109,11 +107,28 @@ class ModelConfig:
 
     @property
     def m_cat(self) -> float:
-        V_buis = np.pi * self.R_ret**2 * self.length
-        return self.rho_bulk * V_buis
-        
+        V_tube = np.pi * self.R_ret**2 * self.length
+        return self.rho_bulk * V_tube
+    
+    @property
+    def v_tube(self) -> float:
+        return np.pi * self.R_ret**2 * self.length
 
-cfg = ModelConfig()
+    def k_eff_r1(self) -> float:
+        return self.k1_pre * np.exp(
+            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
+        )
+
+    def K_ads(self, K_ref: float, dH: float) -> float:
+        return K_ref * np.exp(
+            (dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
+        )
+
+    def k_eff_r2(self, P_total_Pa: float | np.ndarray | None = None) -> float | np.ndarray:
+        k_min = self.k2_pre * np.exp(-self.Ea_DMC) / (self.R * self.T)
+        return k_min / 60.0  # [g_cat^-1 s^-1]   
+
+
 
 
 

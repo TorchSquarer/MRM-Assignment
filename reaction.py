@@ -1,49 +1,182 @@
+from __future__ import annotations
+
 import numpy as np
 from config import ModelConfig
 
-STOICH = np.array(
-    [
-        [-1.0, -3.0,  1.0,  1.0,  0.0],  # R1: CO2 + 3H2 <-> CH3OH + H2O
-        [-1.0,  0.0, -2.0,  1.0,  1.0],  # R2: CO2 + 2CH3OH <-> DMC + H2O
-    ]
-)
 
 SPECIES_LABELS = ("CO2", "H2", "CH3OH", "H2O", "DMC")
 
+STOICH = np.array(
+    [
+        [-1.0, -3.0,  1.0,  1.0,  0.0],
+        [-1.0,  0.0, -2.0,  1.0,  1.0],
+    ]
+)
+
+EPS = 1.0e-30
+
 class ReactionRates:
-    def __init__(self, cfg: ModelConfig) -> None:
+    def __init__(self, cfg: ModelConfig, r2_mechanism: str = "LH") -> None:
         self.cfg = cfg
+        self.r2_mechanism = r2_mechanism.upper()
 
-    def reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig) -> tuple[np.ndarray, np.ndarray]:
-        RT = cfg.R * cfg.T
-        P_Pa = c_p * RT                  # partial pressures [Pa], shape (n_z, n_r_ret, n_c)
+    def mole_fractions(self, c: np.ndarray) -> np.ndarray:
+        c_pos = np.maximum(c, 0.0)
+        c_tot = np.maximum(np.sum(c_pos, axis=-1, keepdims=True), EPS)
+        return c_pos / c_tot
 
-        P_CO2 =      P_Pa[..., 0]
-        P_H2 =      P_Pa[..., 1]
-        P_CH3OH = P_Pa[..., 2]
-        P_H2O = P_Pa[..., 3]
-        P_DMC = P_Pa[..., 4]
-        P_total_Pa = P_Pa.sum(axis=-1)      
+    def partial_pressures(self, c: np.ndarray, cfg: ModelConfig | None = None):
+        if cfg is None:
+            cfg = self.cfg
 
-        # R1: CO2 + 3H2 <-> CH3OH + H2O
-        alpha_1 = P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / cfg.k1_eq
-        inhibition = (1.0 + cfg.K_ads(cfg.K_CO2_ref, cfg.dH_CO2) * P_CO2 + np.sqrt(cfg.K_ads(cfg.K_H2_ref, cfg.dH_H2) * P_H2)) ** 2
-        r1 = np.zeros_like(alpha_1)
-        r1 = (cfg.k_eff_r1() * alpha_1 / (P_H2 ** 2 * inhibition)) 
-        r1 = r1 * cfg.rho_bulk  # [mol/s/bar²/kg_cat] → [mol/s/m³_reactor]   
+        y = self.mole_fractions(c)
 
-        # R2: CO2 + 2CH3OH <-> DMC + H2O  (Ibrahim et al., Eq. 6, no adsorption terms)
-        eps = 1e-10 * cfg.p_stand  # small pressure floor
+        # Isobaric pressure from config.py
+        P_total_pa = np.asarray(cfg.p, dtype=float)
 
-        alpha_2 = P_DMC * P_H2O / (cfg.k2_eq * cfg.p_stand)
-        inhibition = (1 + cfg.k_ads1 * (P_CH3OH / cfg.p_stand) 
-               + cfg.k_ads2 * (P_CH3OH / cfg.p_stand) * (P_CO2 / cfg.p_stand))
+        # Broadcast pressure to match concentration shape
+        P_pa = y * P_total_pa
+        P_bar = P_pa / 1.0e5
 
-        P_CH3OH_safe = np.maximum(P_CH3OH, eps)
-        r2 = cfg.m_cat * cfg.k_eff_r2(P_total_Pa) * (P_CO2 * P_CH3OH**2 - alpha_2) / ((P_CH3OH_safe / cfg.p_stand) * inhibition)
+        return P_pa, P_bar, y
+
+    def adsorption_constant(self, K_ref: float, dH: float, cfg: ModelConfig) -> float:
+        return K_ref * np.exp((dH / cfg.R) * (1.0 / cfg.T_ref - 1.0 / cfg.T))
+
+    def r1_methanol(self, c: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
+        if cfg is None:
+            cfg = self.cfg
+
+        _P_pa, P_bar, _y = self.partial_pressures(c, cfg)
+
+        P_CO2   = np.maximum(P_bar[..., 0], 0.0)
+        P_H2    = np.maximum(P_bar[..., 1], EPS)
+        P_CH3OH = np.maximum(P_bar[..., 2], 0.0)
+        P_H2O   = np.maximum(P_bar[..., 3], 0.0)
+
+        K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, cfg)
+        K_H2  = self.adsorption_constant(cfg.K_H2_ref,  cfg.dH_H2,  cfg)
+
+        driving_force = (
+            P_CO2 * P_H2**3
+            - (P_CH3OH * P_H2O) / np.maximum(cfg.k1_eq, EPS)
+        )
+
+        inhibition = (
+            1.0
+            + K_CO2 * P_CO2
+            + np.sqrt(np.maximum(K_H2 * P_H2, 0.0))
+        ) ** 2
+
+        denominator = P_H2**2 * np.maximum(inhibition, EPS)
+
+        # Rate per kg catalyst
+        r1_mass = cfg.k_eff_r1() * driving_force / denominator
+
+        # Convert to rate per reactor volume
+        r1_vol = r1_mass * cfg.rho_bulk
+
+        return np.nan_to_num(r1_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
+
+    def k2_santos(self, P_total_pa: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
+        if cfg is None:
+            cfg = self.cfg
+
+        # Temperature effect: k = k0 * exp(-Ea / RT)
+        exponent_T = -cfg.Ea_DMC / (cfg.R * cfg.T)
+        exponent_T = np.clip(exponent_T, -700.0, 700.0)
+
+        k_min = cfg.k2_pre * np.exp(exponent_T)  # g_cat^-1 min^-1
+
+        # Pressure correction:
+        # k_p = k_p0 * exp[-dV * (P - P0) / RT]
+        dV = getattr(cfg, "dV", 0.0)
+        P_ref = getattr(cfg, "p_0", 200e5)
+
+        exponent_P = -dV * (P_total_pa - P_ref) / (cfg.R * cfg.T)
+        exponent_P = np.clip(exponent_P, -700.0, 700.0)
+
+        k_min = k_min * np.exp(exponent_P)
+
+        # Convert min^-1 to s^-1
+        k_s = k_min / 60.0
+
+        return k_s
+
+    def r2_dmc(self, c: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
+        if cfg is None:
+            cfg = self.cfg
+
+        P_pa, _P_bar, _y = self.partial_pressures(c, cfg)
+
+        P_total_pa = np.maximum(np.sum(P_pa, axis=-1), EPS)
+
+        # Dimensionless pressure ratios
+        p_CO2   = np.maximum(P_pa[..., 0] / cfg.p_stand, 0.0)
+        p_CH3OH = np.maximum(P_pa[..., 2] / cfg.p_stand, EPS)
+        p_H2O   = np.maximum(P_pa[..., 3] / cfg.p_stand, 0.0)
+        p_DMC   = np.maximum(P_pa[..., 4] / cfg.p_stand, 0.0)
+
+        # Equilibrium driving force for:
+        # CO2 + 2 CH3OH <-> DMC + H2O
+        driving_force = (
+            p_CO2 * p_CH3OH**2
+            - (p_DMC * p_H2O) / np.maximum(cfg.k2_eq, EPS)
+        )
+
+        if self.r2_mechanism == "LH":
+            adsorption_sum = (
+                1.0
+                + cfg.k_ads1 * p_CO2
+                + cfg.k_ads2 * p_CH3OH
+            )
+
+            denominator = np.maximum(adsorption_sum, EPS) ** 3
+
+        elif self.r2_mechanism == "ER":
+            denominator = (
+                p_CH3OH
+                * (
+                    1.0
+                    + cfg.k_ads1 * p_CH3OH
+                    + cfg.k_ads2 * p_CH3OH * p_CO2
+                )
+            )
+
+            denominator = np.maximum(denominator, EPS)
+
+        else:
+            raise ValueError(
+                f"Unknown r2_mechanism: {self.r2_mechanism}. "
+                "Use 'LH' or 'ER'."
+            )
+
+        k2 = self.k2_santos(P_total_pa, cfg)
+
+        rho_cat_g_m3 = cfg.rho_bulk * 1000.0
+        c_ref = np.maximum(c[..., 0], 0.0)
+
+        r2_vol = c_ref * rho_cat_g_m3 * k2 * driving_force / denominator
+
+        r2_scale = getattr(cfg, "r2_scale", 1.0)
+        r2_vol = r2_scale * r2_vol
+
+        return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
+
+    def reaction_rates(self,c: np.ndarray, cfg: ModelConfig | None = None) -> tuple[np.ndarray, np.ndarray]:
+        if cfg is None:
+            cfg = self.cfg
+        r1 = self.r1_methanol(c, cfg)
+        r2 = self.r2_dmc(c, cfg)
+
         return r1, r2
 
-    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig) -> np.ndarray:
+    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
+        if cfg is None:
+            cfg = self.cfg
+
         r1, r2 = self.reaction_rates(c_p, cfg)
-        rates = np.stack([r1, r2], axis=-1)             
-        return np.einsum("zrc,co->zro", rates, STOICH)
+        rates = np.stack([r1, r2], axis=-1)  # [..., n_reactions]
+        source = np.einsum("...r,rs->...s", rates, STOICH)
+
+        return source
