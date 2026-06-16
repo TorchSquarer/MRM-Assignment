@@ -57,51 +57,16 @@ class ReactionRates:
         K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, cfg)
         K_H2  = self.adsorption_constant(cfg.K_H2_ref,  cfg.dH_H2,  cfg)
 
-        driving_force = (
-            P_CO2 * P_H2**3
-            - (P_CH3OH * P_H2O) / np.maximum(cfg.k1_eq, EPS)
-        )
+        driving_force = (P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / np.maximum(cfg.k1_eq, EPS))
 
-        inhibition = (
-            1.0
-            + K_CO2 * P_CO2
-            + np.sqrt(np.maximum(K_H2 * P_H2, 0.0))
-        ) ** 2
-
+        inhibition = (1.0 + K_CO2 * P_CO2 + np.sqrt(np.maximum(K_H2 * P_H2, 0.0))) ** 2
         denominator = P_H2**2 * np.maximum(inhibition, EPS)
-
         # Rate per kg catalyst
         r1_mass = cfg.k_eff_r1() * driving_force / denominator
-
         # Convert to rate per reactor volume
-        r1_vol = r1_mass * cfg.rho_bulk
+        r1_vol = cfg.r1_scale * r1_mass * cfg.rho_bulk
 
         return np.nan_to_num(r1_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
-
-    def k2_santos(self, P_total_pa: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
-        if cfg is None:
-            cfg = self.cfg
-
-        # Temperature effect: k = k0 * exp(-Ea / RT)
-        exponent_T = -cfg.Ea_DMC / (cfg.R * cfg.T)
-        exponent_T = np.clip(exponent_T, -700.0, 700.0)
-
-        k_min = cfg.k2_pre * np.exp(exponent_T)  # g_cat^-1 min^-1
-
-        # Pressure correction:
-        # k_p = k_p0 * exp[-dV * (P - P0) / RT]
-        dV = getattr(cfg, "dV", 0.0)
-        P_ref = getattr(cfg, "p_0", 200e5)
-
-        exponent_P = -dV * (P_total_pa - P_ref) / (cfg.R * cfg.T)
-        exponent_P = np.clip(exponent_P, -700.0, 700.0)
-
-        k_min = k_min * np.exp(exponent_P)
-
-        # Convert min^-1 to s^-1
-        k_s = k_min / 60.0
-
-        return k_s
 
     def r2_dmc(self, c: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
         if cfg is None:
@@ -109,58 +74,22 @@ class ReactionRates:
 
         P_pa, _P_bar, _y = self.partial_pressures(c, cfg)
 
-        P_total_pa = np.maximum(np.sum(P_pa, axis=-1), EPS)
-
         # Dimensionless pressure ratios
         p_CO2   = np.maximum(P_pa[..., 0] / cfg.p_stand, 0.0)
         p_CH3OH = np.maximum(P_pa[..., 2] / cfg.p_stand, EPS)
         p_H2O   = np.maximum(P_pa[..., 3] / cfg.p_stand, 0.0)
         p_DMC   = np.maximum(P_pa[..., 4] / cfg.p_stand, 0.0)
 
-        # Equilibrium driving force for:
         # CO2 + 2 CH3OH <-> DMC + H2O
-        driving_force = (
-            p_CO2 * p_CH3OH**2
-            - (p_DMC * p_H2O) / np.maximum(cfg.k2_eq, EPS)
-        )
+        driving_force = (p_CO2 * p_CH3OH**2 - (p_DMC * p_H2O) / np.maximum(cfg.k2_eq, EPS))
+        adsorption_sum = (1.0 + cfg.k_ads1 * p_CO2 + cfg.k_ads2 * p_CH3OH)
+        denominator = np.maximum(adsorption_sum, EPS) ** 3
 
-        if self.r2_mechanism == "LH":
-            adsorption_sum = (
-                1.0
-                + cfg.k_ads1 * p_CO2
-                + cfg.k_ads2 * p_CH3OH
-            )
-
-            denominator = np.maximum(adsorption_sum, EPS) ** 3
-
-        elif self.r2_mechanism == "ER":
-            denominator = (
-                p_CH3OH
-                * (
-                    1.0
-                    + cfg.k_ads1 * p_CH3OH
-                    + cfg.k_ads2 * p_CH3OH * p_CO2
-                )
-            )
-
-            denominator = np.maximum(denominator, EPS)
-
-        else:
-            raise ValueError(
-                f"Unknown r2_mechanism: {self.r2_mechanism}. "
-                "Use 'LH' or 'ER'."
-            )
-
-        k2 = self.k2_santos(P_total_pa, cfg)
+        k2 = cfg.k_eff_r2()
 
         rho_cat_g_m3 = cfg.rho_bulk * 1000.0
         c_ref = np.maximum(c[..., 0], 0.0)
-
-        r2_vol = c_ref * rho_cat_g_m3 * k2 * driving_force / denominator
-
-        r2_scale = getattr(cfg, "r2_scale", 1.0)
-        r2_vol = r2_scale * r2_vol
-
+        r2_vol = cfg.r2_scale * c_ref * rho_cat_g_m3 * k2 * driving_force / denominator
         return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
 
     def reaction_rates(self,c: np.ndarray, cfg: ModelConfig | None = None) -> tuple[np.ndarray, np.ndarray]:

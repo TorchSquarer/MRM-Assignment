@@ -31,7 +31,7 @@ class ModelConfig:
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
     D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
-    p: float = 50e5  # Operational Pressure [Pa]
+    p: float = 200e5  # Operational Pressure [Pa]
     p_0: float = 200e5  # Reference Pressure for volume change [Pa]
     p_stand: float = 1e5 # 1 bar in Pa
 
@@ -54,6 +54,7 @@ class ModelConfig:
     K_H2_ref: float = 0.76  # H2 adsorption constant at T_ref [bar⁻¹]
     dH_CO2: float = -25.9e3  # Enthalpy of adsorption for CO2 [J/mol]
     dH_H2: float = -12.5e3  # Enthalpy of adsorption for H2 [J/mol]
+    r1_scale: float = 1.0
 
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
     k2_pre: float = 0.8  # Pre-exponential factor [s⁻¹]
@@ -112,9 +113,25 @@ class ModelConfig:
             (dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
         )
 
-    def k_eff_r2(self, P_total_Pa: float | np.ndarray | None = None) -> float | np.ndarray:
-        k_min = self.k2_pre * np.exp(-self.Ea_DMC) / (self.R * self.T)
-        return k_min / 60.0  # [g_cat^-1 s^-1]   
+    def k_eff_r2(self, P_total_Pa=None):
+        if P_total_Pa is None:
+            P_total_Pa = self.p
+
+        # Normal Arrhenius equation
+        exponent_T = -self.Ea_DMC / (self.R * self.T)
+
+        # Protection against numerical overflow
+        exponent_T = np.clip(exponent_T, -700.0, 700.0)
+        k_min = self.k2_pre * np.exp(exponent_T)  # [g_cat^-1 min^-1]
+
+        # Optional pressure correction
+        exponent_P = -self.dV * (P_total_Pa - self.p_0) / (self.R * self.T)
+        exponent_P = np.clip(exponent_P, -700.0, 700.0)
+
+        k_min = k_min * np.exp(exponent_P)
+
+        # Convert min^-1 to s^-1
+        return k_min / 60.0 
 
 
 
