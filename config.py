@@ -12,15 +12,14 @@ for candidate in (Path.cwd(), Path.cwd().parent):
 @dataclass
 class ModelConfig:
     # reactor model
-    length: float = 20 # length [m]
-    R_ret: float = 10.0e-3 # radius of retentate [m]
-    R_perm: float = R_ret + 5e-4 # radius of permeate [m]
-    R_out: float = 12e-3 # outer radius [m]
+    length: float = 20              # length [m]
+    R_ret: float = 10.0e-3          # radius of retentate [m]
+    R_perm: float = R_ret + 5e-4    # radius of permeate [m]
+    R_out: float = 12e-3            # outer radius [m]
 
-    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.001, 0.000])) # Membrane permeability
-    v_ret: float = 0.005 # velocity of retentate [m/s]
-    v_perm: float = 0.1 # velocity of permeate [m/s]
-    d_ax: float = 2.0e-5 # dispersion in the axial direction 
+    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.001, 0.000])) # Membrane permeability [m/s]
+    v_ret: float = 0.05                                                                                 # velocity of retentate [m/s]
+    v_perm: float = 0.1                                                                                 # velocity of permeate [m/s]
     
     n_z: int = 200 # number of grid points in the axial direction
     n_r_perm: int = 30 # number of grid points in the radial direction of permeate
@@ -43,7 +42,7 @@ class ModelConfig:
     eps_p: float = 0.5  # film porosity / active sites [-]
     rho_cat: float = 7215 # Catalyst density [kg/m³]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
-    dp: float = 2.0e-3  # Particle diameter [m]
+    d_p: float = 2.0e-3  # Particle diameter [m]
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
     T_ref: float = 573.15  # Reference temperature [K] (300 °C)
@@ -110,6 +109,18 @@ class ModelConfig:
     @property
     def Schmidt(self) -> float:
         return self.mu / (self.rho_bulk * self.particle_diffusivity)
+
+    @property
+    def d_ax(self) -> np.ndarray:
+        Re = self.Reynolds
+        Sc = self.Schmidt
+        eps_g = 1 - self.eps_s
+
+        D_ax = self.v_ret * self.d_p * (
+            (0.73 * eps_g) / (eps_g + 0.5/(Re * Sc))
+            + (0.5 / (1 + 9.7 * eps_g / (Re * Sc)))
+        )
+        return D_ax
 
     def k_eff_r1(self) -> float:
         return self.k1_pre * np.exp(
