@@ -17,7 +17,7 @@ class ModelConfig:
     R_perm: float = R_ret + 5e-4    # radius of permeate [m]
     R_out: float = 12e-3            # outer radius [m]
 
-    P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.001, 0.000])) # Membrane permeability [m/s]
+    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.005, 0.000])) # Membrane permeability [m/s]
     v_ret: float = 0.05                                                                                 # velocity of retentate [m/s]
     v_perm: float = 0.1                                                                                 # velocity of permeate [m/s]
     
@@ -30,12 +30,12 @@ class ModelConfig:
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
     D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
-    p: float = 200e5  # Operational Pressure [Pa]
+    p: float = 50e5  # Operational Pressure [Pa]
     p_0: float = 200e5  # Reference Pressure for volume change [Pa]
     p_stand: float = 1e5 # 1 bar in Pa
 
     tau: float = length / v_ret
-
+    
     particle_radius: float = 1.0e-3  # Catalyst particle radius [m]
     particle_diffusivity: np.ndarray = field(default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6]))  # Diffusivity per component [m²/s]
     eps_s: float = 0.4  # Solid holdup (volume fraction catalyst) [-]
@@ -43,6 +43,9 @@ class ModelConfig:
     rho_cat: float = 7215 # Catalyst density [kg/m³]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
     d_p: float = 2.0e-3  # Particle diameter [m]
+    MW: np.ndarray = field(default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3,90.08e-3]))  #[kg/mol]
+    eps_bed: float = 1 - eps_s
+
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
     T_ref: float = 573.15  # Reference temperature [K] (300 °C)
@@ -56,12 +59,14 @@ class ModelConfig:
     r1_scale: float = 1.0
 
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
+    T_ref_DMC: float = 298.15 #k
     k2_pre: float = 0.8  # Pre-exponential factor [s⁻¹]
-    k2_eq: float = 3e-4 # guessed value
     k_ads1: float = 9
     k_ads2: float = 109
+    dH_DMC: float = -20.10e3
+    dG_DMC: float = 31.50e3
     Ea_DMC: float = 106e3  # Activation energy [J/mol]
-    dV: float = 0.0
+    dV: float = -0.24e-6
     r2_scale: float = 1.0
 
     feed_y: np.ndarray = field(default_factory=lambda: np.array([0.25, 0.75, 0.0, 0.0, 0.0])) # inlet concentration of the components, CO2, H2, CH3OH, H2O, DMC
@@ -104,7 +109,7 @@ class ModelConfig:
     
     @property
     def Reynolds(self) -> float:
-        return self.rho_bulk * self.v_ret * self.d_ax / self.mu
+        return self.rho_bulk * self.v_ret * self.d_p / self.mu
 
     @property
     def Schmidt(self) -> float:
@@ -131,6 +136,13 @@ class ModelConfig:
         return K_ref * np.exp(
             (dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
         )
+
+    def k2_eq_T(self) -> float:
+        lnK = (
+            -self.dG_DMC / (self.R * self.T_ref_DMC)
+            + (self.dH_DMC / self.R) * (1.0 / self.T_ref_DMC - 1.0 / self.T)
+            )
+        return float(np.exp(lnK))
 
     def k_eff_r2(self, P_total_Pa=None):
         if P_total_Pa is None:
