@@ -18,7 +18,7 @@ class ModelConfig:
     R_out: float = 12e-3 # outer radius [m]
 
     P_vector: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.001, 0.000])) # Membrane permeability
-    v_ret: float = 0.05 # velocity of retentate [m/s]
+    v_ret: float = 0.005 # velocity of retentate [m/s]
     v_perm: float = 0.1 # velocity of permeate [m/s]
     d_ax: float = 2.0e-5 # dispersion in the axial direction 
     
@@ -102,6 +102,14 @@ class ModelConfig:
     @property
     def v_tube(self) -> float:
         return np.pi * self.R_ret**2 * self.length
+    
+    @property
+    def Reynolds(self) -> float:
+        return self.rho_bulk * self.v_ret * self.d_ax / self.mu
+
+    @property
+    def Schmidt(self) -> float:
+        return self.mu / (self.rho_bulk * self.particle_diffusivity)
 
     def k_eff_r1(self) -> float:
         return self.k1_pre * np.exp(
