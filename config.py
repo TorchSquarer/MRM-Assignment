@@ -112,7 +112,7 @@ class ModelConfig:
         return self.rho_gas * self.v_ret * self.d_p / self.mu
 
     @property
-    def Schmidt(self) -> float:
+    def Schmidt(self) -> np.ndarray:
         return self.mu / (self.rho_gas * self.particle_diffusivity)
 
     @property
@@ -130,44 +130,54 @@ class ModelConfig:
     @property
     def rho_gas(self) -> float:
         avg_Mw = np.sum(self.feed_y * self.MW)
-        return self.eps_bed * (self.p * avg_Mw) / (self.R * self.T)
+        return self.p * avg_Mw / (self.R * self.T)
+    
+    @property
+    def Cp_gas(self) -> float:
+        avg_Mw = np.sum(self.feed_y * self.MW)
+        return self.p * avg_Mw / (self.R * self.T)
+    
+    @property
+    def thermal_conductivity_ax(self) -> float:
+        avg_Mw = np.sum(self.feed_y * self.MW)
+        return self.p * avg_Mw / (self.R * self.T)
 
-    def k_eff_r1(self) -> float:
-        return self.k1_pre * np.exp(
-            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
-        )
-
-    def K_ads(self, K_ref: float, dH: float) -> float:
-        return K_ref * np.exp(
-            (dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
-        )
-
-    def k2_eq_T(self) -> float:
-        lnK = (
-            -self.dG_DMC / (self.R * self.T_ref_DMC)
-            + (self.dH_DMC / self.R) * (1.0 / self.T_ref_DMC - 1.0 / self.T)
-            )
-        return float(np.exp(lnK))
-
-    def k_eff_r2(self, P_total_Pa=None):
-        if P_total_Pa is None:
-            P_total_Pa = self.p
-
-        # Normal Arrhenius equation
-        exponent_T = -self.Ea_DMC / (self.R * self.T)
-
-        # Protection against numerical overflow
-        exponent_T = np.clip(exponent_T, -700.0, 700.0)
-        k_min = self.k2_pre * np.exp(exponent_T)  # [g_cat^-1 min^-1]
-
-        # Optional pressure correction
-        exponent_P = -self.dV * (P_total_Pa - self.p_0) / (self.R * self.T)
-        exponent_P = np.clip(exponent_P, -700.0, 700.0)
-
-        k_min = k_min * np.exp(exponent_P)
-
-        # Convert min^-1 to s^-1
-        return k_min / 60.0 
+#    def k_eff_r1(self) -> float:
+#        return self.k1_pre * np.exp(
+#            (self.Ea_1 / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
+#        )
+#
+#    def K_ads(self, K_ref: float, dH: float) -> float:
+#        return K_ref * np.exp(
+#            (dH / self.R) * (1.0 / self.T_ref - 1.0 / self.T)
+#        )
+#
+#    def k2_eq_T(self) -> float:
+#        lnK = (
+#            -self.dG_DMC / (self.R * self.T_ref_DMC)
+#            + (self.dH_DMC / self.R) * (1.0 / self.T_ref_DMC - 1.0 / self.T)
+#            )
+#        return float(np.exp(lnK))
+#
+#    def k_eff_r2(self, P_total_Pa=None):
+#        if P_total_Pa is None:
+#            P_total_Pa = self.p
+#
+#        # Normal Arrhenius equation
+#        exponent_T = -self.Ea_DMC / (self.R * self.T)
+#
+#        # Protection against numerical overflow
+#        exponent_T = np.clip(exponent_T, -700.0, 700.0)
+#        k_min = self.k2_pre * np.exp(exponent_T)  # [g_cat^-1 min^-1]
+#
+#        # Optional pressure correction
+#        exponent_P = -self.dV * (P_total_Pa - self.p_0) / (self.R * self.T)
+#        exponent_P = np.clip(exponent_P, -700.0, 700.0)
+#
+#        k_min = k_min * np.exp(exponent_P)
+#
+#        # Convert min^-1 to s^-1
+#        return k_min / 60.0 
 
 
 

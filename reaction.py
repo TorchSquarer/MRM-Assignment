@@ -42,6 +42,43 @@ class ReactionRates:
 
     def adsorption_constant(self, K_ref: float, dH: float, cfg: ModelConfig) -> float:
         return K_ref * np.exp((dH / cfg.R) * (1.0 / cfg.T_ref - 1.0 / cfg.T))
+    
+    def k_eff_r1(self, cfg: ModelConfig, T: float = ModelConfig.T) -> float|np.ndarray:
+        return cfg.k1_pre * np.exp(
+            (cfg.Ea_1 / cfg.R) * (1.0 / cfg.T_ref - 1.0 / T)
+        )
+
+    def K_ads(self, cfg: ModelConfig, K_ref: float, dH: float, T: float = ModelConfig.T):
+        return K_ref * np.exp(
+            (dH / cfg.R) * (1.0 / cfg.T_ref - 1.0 / T)
+        )
+
+    def k2_eq_T(self, cfg: ModelConfig, T: float = ModelConfig.T) -> float|np.ndarray:
+        lnK = (
+            -cfg.dG_DMC / (cfg.R * cfg.T_ref_DMC)
+            + (cfg.dH_DMC / cfg.R) * (1.0 / cfg.T_ref_DMC - 1.0 / T)
+            )
+        return float(np.exp(lnK)) # for non-isothermal conditions this needs to be fixed to and/or array output
+
+    def k_eff_r2(self, cfg: ModelConfig, P_total_Pa=None, T: float = ModelConfig.T):
+        if P_total_Pa is None:
+            P_total_Pa = cfg.p
+
+        # Normal Arrhenius equation
+        exponent_T = -cfg.Ea_DMC / (cfg.R * T)
+
+        # Protection against numerical overflow
+        exponent_T = np.clip(exponent_T, -700.0, 700.0)
+        k_min = cfg.k2_pre * np.exp(exponent_T)  # [g_cat^-1 min^-1]
+
+        # Optional pressure correction
+        exponent_P = -cfg.dV * (P_total_Pa - cfg.p_0) / (cfg.R * cfg.T)
+        exponent_P = np.clip(exponent_P, -700.0, 700.0)
+
+        k_min = k_min * np.exp(exponent_P)
+
+        # Convert min^-1 to s^-1
+        return k_min / 60.0 
 
     def r1_methanol(self, c: np.ndarray, cfg: ModelConfig | None = None) -> np.ndarray:
         if cfg is None:
@@ -62,7 +99,7 @@ class ReactionRates:
         inhibition = (1.0 + K_CO2 * P_CO2 + np.sqrt(np.maximum(K_H2 * P_H2, 0.0))) ** 2
         denominator = P_H2**2 * np.maximum(inhibition, EPS)
         # Rate per kg catalyst
-        r1_mass = cfg.k_eff_r1() * driving_force / denominator
+        r1_mass = self.k_eff_r1(cfg, cfg.T) * driving_force / denominator
         # Convert to rate per reactor volume
         r1_vol = cfg.r1_scale * r1_mass * cfg.rho_bulk
 
@@ -79,11 +116,11 @@ class ReactionRates:
         P_H2O   = np.maximum(P_pa[..., 3], 0.0)
         P_DMC   = np.maximum(P_pa[..., 4], 0.0)
 
-        K_eq = cfg.k2_eq_T()
+        K_eq = self.k2_eq_T(cfg, cfg.T)
 
         driving_force = ((P_CO2/cfg.p_stand) * (P_CH3OH/cfg.p_stand)**2 - ((P_DMC/cfg.p_stand) * (P_H2O/cfg.p_stand)) / np.maximum(K_eq, EPS))
         denominator = np.maximum(1.0 + cfg.k_ads1 * (P_CO2/cfg.p_stand) + cfg.k_ads2 * (P_CH3OH/cfg.p_stand), EPS) ** 3
-        k2 = cfg.k_eff_r2(cfg.p)  # [1/s] after min^-1 to s^-1 conversion
+        k2 = self.k_eff_r2(cfg, cfg.p, cfg.T)  # [1/s] after min^-1 to s^-1 conversion
 
         rho_cat_g_m3 = cfg.rho_bulk * 1000.0
 
@@ -94,7 +131,7 @@ class ReactionRates:
         return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
 
 
-    def reaction_rates(self,c: np.ndarray, cfg: ModelConfig | None = None) -> tuple[np.ndarray, np.ndarray]:
+    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig | None = None) -> tuple[np.ndarray, np.ndarray]:
         if cfg is None:
             cfg = self.cfg
         r1 = self.r1_methanol(c, cfg)
@@ -151,10 +188,7 @@ class ReactionRates:
         theta_CO2   = P_CO2 / cfg.p_stand
         theta_CH3OH = P_CH3OH / cfg.p_stand
 
-        if hasattr(cfg, "k2_eq_T"):
-            K_eq = cfg.k2_eq_T()
-        else:
-            K_eq = cfg.k2_eq
+        K_eq = self.k2_eq_T(cfg, cfg.T)
 
         r2_forward = P_CO2 * P_CH3OH**2
         r2_reverse = (P_DMC * P_H2O * cfg.p_stand) / np.maximum(K_eq, EPS)
