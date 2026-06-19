@@ -109,11 +109,11 @@ class ModelConfig:
     
     @property
     def Reynolds(self) -> float:
-        return self.rho_bulk * self.v_ret * self.d_p / self.mu
+        return self.rho_gas * self.v_ret * self.d_p / self.mu
 
     @property
     def Schmidt(self) -> float:
-        return self.mu / (self.rho_bulk * self.particle_diffusivity)
+        return self.mu / (self.rho_gas * self.particle_diffusivity)
 
     @property
     def d_ax(self) -> np.ndarray:
@@ -126,6 +126,11 @@ class ModelConfig:
             + (0.5 / (1 + 9.7 * eps_g / (Re * Sc)))
         )
         return D_ax
+    
+    @property
+    def rho_gas(self) -> float:
+        avg_Mw = np.sum(self.feed_y * self.MW)
+        return self.eps_bed * (self.p * avg_Mw) / (self.R * self.T)
 
     def k_eff_r1(self) -> float:
         return self.k1_pre * np.exp(
