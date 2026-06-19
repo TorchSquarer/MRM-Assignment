@@ -97,7 +97,7 @@ class TransportOperators:
         self.particle_apparent_mat    = (3.0 / cfg.particle_radius) * flux_p_mat[outer_face_rows, :]
         self.particle_apparent_bc_mat = (3.0 / cfg.particle_radius) * flux_p_bc[outer_face_rows, :]
 
-        # BCs: zero concentration at permeate inlet (z=L), zero-gradient at z=0.
+        # BCs: zero concentration at permeate inlet (z=0), zero-gradient at z=L.
         bc_permeate = (
             {"a": 0.0, "b": 1.0, "d": 0.0},   # z=0: c_perm = 0 (or sweep gas)
             {"a": 1.0, "b": 0.0, "d": 0.0},   # z=L: dc/dz = 0

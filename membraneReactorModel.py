@@ -86,7 +86,7 @@ class MembraneReactorModel:
         c_g, c_b, c_p, c_m = self.split_state(u)
         source_particle = self.reac.particle_reaction_rates(c_p, cfg)
         source_reactor = cfg.eps_s * self._particle_apparent_source(c_p, c_b)
-        p_mask = cfg.P_vector.reshape(1, -1)
+        p_mask = cfg.P_membrane.reshape(1, -1)
         membrane_flux = p_mask * (c_g - c_m)
         residual = np.zeros_like(u).reshape(self.shape)
 
