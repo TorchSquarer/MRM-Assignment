@@ -37,6 +37,7 @@ class ModelConfig:
 
     D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
+    n = 2 # reaction order
     
     # Catalyst and particle properties
     particle_radius: float = 1.0e-3  # Catalyst particle radius [m]
@@ -48,6 +49,7 @@ class ModelConfig:
     eps_s: float = 0.4  # Catalyst/solid volume fraction in bed [-]
     eps_p: float = 0.5  # catalyst particle porosity [-]
     rho_cat: float = 7215.0 # Catalyst density [kg/m³]
+    tortuosity = 2 # tortuosity of catalyst [-]
     
     MW: np.ndarray = field(
         default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3,90.08e-3]))  # Moleculat weight [kg/mol]
@@ -162,6 +164,14 @@ class ModelConfig:
     @property # estimated pressure outlet
     def pressure_outlet(self) -> float:
         return self.p - self.ergun_pressure_gradient * self.length
+    
+    @property # gass solid mass transfer coefficient
+    def K_gs(self) -> float:
+        return (self.particle_diffusivity[1] / self.d_p) * (2 + 1.1 * self.Reynolds**0.6 * self.Schmidt**(1.3))
+    
+    @property # effecitve difussivity inside catalyst
+    def D_eff(self) -> float:
+        return (self.eps_p * self.particle_diffusivity[1]) / self.tortuosity
 
 # not sure what this is doing here but both the same formula as rho_gas
     @property
