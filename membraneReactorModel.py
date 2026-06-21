@@ -157,7 +157,7 @@ class MembraneReactorModel:
         eta_r2 = r2_apparent / np.maximum(r2_surface, 1.0e-30)
         return eta_r1, eta_r2, r1_surface, r2_surface
     
-    # caculates mears criterian for the external mass transfer
+    # calculates mears criterian for the external mass transfer
     def mears_criterion(self):
         cfg = self.cfg
 
@@ -168,19 +168,17 @@ class MembraneReactorModel:
         r1_surface = r1_surface[:, 0]
         r2_surface = r2_surface[:, 0]
 
-        rho_cat_bulk = cfg.eps_s * cfg.eps_p * cfg.rho_cat
+        r1_cat = (r1_surface / cfg.rho_bulk) # (mol/ kg cat * s)
+        r2_cat = (r2_surface / cfg.rho_bulk) # (mol/ kg cat * s)
 
-        r1_cat = (r1_surface / rho_cat_bulk) / 1000 # (kmol/ kg cat * s)
-        r2_cat = (r2_surface / rho_cat_bulk) / 1000 # (kmol/ kg cat * s)
-
-        C_CO2 = np.maximum(c_g[:, 0], 1e-30) / 1000 # (kmol/m^3)
+        C_CO2 = np.maximum(c_g[:, 0], 1e-30)  # (mol/m^3)
 
         mears_r1 = (r1_cat * cfg.particle_radius * cfg.n) / (cfg.K_gs * C_CO2)
         mears_r2 = (r2_cat * cfg.particle_radius * cfg.n) / (cfg.K_gs * C_CO2)
 
         return mears_r1, mears_r2
     
-    # calculates weisz prater for the internal mass transfer
+    # calculates weisz-prater criterion for the internal mass transfer
     def weisz_prater_criterion(self):
         cfg = self.cfg
 

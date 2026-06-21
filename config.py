@@ -35,7 +35,6 @@ class ModelConfig:
     p_0: float = 200e5  # Reference pressure for volume correction [Pa]
     p_stand: float = 1e5 # standard pressure, 1 bar [Pa]
 
-    D_eff: float = 1.0e-5  # Effective film diffusivity [m²/s]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
     n = 2 # reaction order
     
@@ -167,7 +166,7 @@ class ModelConfig:
     
     @property # gass solid mass transfer coefficient
     def K_gs(self) -> float:
-        return (self.particle_diffusivity[1] / self.d_p) * (2 + 1.1 * self.Reynolds**0.6 * self.Schmidt**(1.3))
+        return (self.particle_diffusivity[1] / self.d_p) * (2 + 1.1 * self.Reynolds**0.6 * self.Schmidt[1]**(1.3))
     
     @property # effecitve difussivity inside catalyst
     def D_eff(self) -> float:
