@@ -117,8 +117,6 @@ class ModelConfig:
     def rho_bulk(self) -> float:
         return self.eps_s * self.eps_p * self.rho_cat
 
-        return self.eps_s * self.rho_cat_particle    
-
     @property # Retentate tube volume [m3]
     def v_tube(self) -> float:
         return np.pi * self.R_ret**2 * self.length

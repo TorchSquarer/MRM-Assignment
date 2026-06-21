@@ -17,9 +17,9 @@ STOICH = np.array(
 EPS = 1.0e-30
 
 class ReactionRates:
-    def __init__(self, cfg: ModelConfig, r2_mechanism: str = "LH") -> None:
+    def __init__(self, cfg: ModelConfig) -> None:
         self.cfg = cfg
-        self.r2_mechanism = r2_mechanism.upper()
+        
 
     # Composistion and pressure helpers
     # Convert concentration to mole fractions
