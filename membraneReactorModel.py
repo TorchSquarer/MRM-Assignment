@@ -2,7 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
