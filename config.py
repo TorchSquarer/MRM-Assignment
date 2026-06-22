@@ -27,8 +27,7 @@ class ModelConfig:
     n_z: int = 100 # number of axial grid points
     n_r_perm: int = 30 # number of radial grid points in permeate
     n_r_ret: int = 30 # number of radial grid points in retentate
-    n_c: int = 5 # number of components
-
+    n_c: int = 6 # number of component + 1 for temperature
     # Operating conditions
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
@@ -59,7 +58,7 @@ class ModelConfig:
                                           0.28909,   # H2 
                                           0.055131,  # CH3OH
                                           0.60129,   # H2O
-                                          1]))       # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
+                                          0.1]))     # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
     heat_conductivity_s: float = 8.0 # Heat Conductivity of catalyst CeO2 (Suzuki K. et al 2019) [W/(m*K)]
 
     heat_capacity_gas: np.ndarray = field(           # Heat Capacity [J/(mol*K)] at T=537K and P=50bar found at NIST Chemistry Webbook
@@ -67,7 +66,7 @@ class ModelConfig:
                                           29.34,     # H2
                                           108.95,    # CH3OH
                                           79.952,    # H2O
-                                          1]))       # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
+                                          462]))     # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
 
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
