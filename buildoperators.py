@@ -101,8 +101,6 @@ class TransportOperators:
         div_mat = construct_div(self.gas_shape, self.z_f, axis=0)
 
         d_ax = np.zeros(cfg.n_c)
-        print(d_ax.shape)
-        print(cfg.d_ax.shape)
         d_ax[:-1] = cfg.d_ax
 
         d_ax_mat = construct_coefficient_matrix(d_ax, self.gas_shape, axis=0)
@@ -149,9 +147,11 @@ class TransportOperators:
     def _build_permeate_transport_operators(self, cfg: ModelConfig) -> None:
         
         # Boundary conditions
+        perm_inlet = np.zeros(cfg.n_c)
+        perm_inlet[-1] = cfg.T
         bc_permeate = (
-            {"a": 0.0, "b": 1.0, "d": 0.0},   # z=0: c_perm = 0
-            {"a": 1.0, "b": 0.0, "d": 0.0},   # z=L: dc/dz = 0
+            {"a": 0.0, "b": 1.0, "d": perm_inlet},   # z=0: c_perm = 0, T = T_in
+            {"a": 1.0, "b": 0.0, "d": 0.0},           # z=L: dc/dz = 0
         )
 
         conv_mat_m, conv_bc_m = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_permeate, v=cfg.v_perm, axis=0)

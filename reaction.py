@@ -143,23 +143,21 @@ class ReactionRates:
         return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
 
     #combined reaction rates and source terms
-    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> tuple[np.ndarray, np.ndarray]:
+    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig|None=None) -> tuple[np.ndarray, np.ndarray]:
         if cfg is None:
             cfg = self.cfg
-        if T is None:
-            T = self.cfg.T
             
-        r1 = self.r1_methanol(c, cfg, T) # Methanol formation rate [mol/m3 s]
-        r2 = self.r2_dmc(c, cfg, T) # DMC formation rate [mol/m3 s]
+        r1 = self.r1_methanol(c[...,:-1], cfg, c[...,-1]) # Methanol formation rate [mol/m3 s]
+        r2 = self.r2_dmc(c[...,:-1], cfg, c[...,-1]) # DMC formation rate [mol/m3 s]
 
         return r1, r2
 
     # converts reaction rates into component source terms
-    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> np.ndarray:
+    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig|None=None) -> np.ndarray:
         if cfg is None:
             cfg = self.cfg
 
-        r1, r2 = self.reaction_rates(c_p, cfg, T)
+        r1, r2 = self.reaction_rates(c_p, cfg)
         rates = np.stack([r1, r2], axis=-1)  
         source = np.einsum("...r,rs->...s", rates, STOICH)
 
