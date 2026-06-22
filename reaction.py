@@ -89,9 +89,11 @@ class ReactionRates:
 
 
     # Reaction 1: Methanol formation
-    def r1_methanol(self, c: np.ndarray, cfg: ModelConfig|None=None, ) -> np.ndarray:
+    def r1_methanol(self, c: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> np.ndarray:
         if cfg is None:
             cfg = self.cfg
+        if T is None:
+            T = self.cfg.T
 
         _P_pa, P_bar, _y = self.partial_pressures(c, cfg)
 
@@ -100,8 +102,8 @@ class ReactionRates:
         P_CH3OH = np.maximum(P_bar[..., 2], 0.0)
         P_H2O   = np.maximum(P_bar[..., 3], 0.0)
 
-        K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, cfg)
-        K_H2  = self.adsorption_constant(cfg.K_H2_ref,  cfg.dH_H2,  cfg)
+        K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, cfg, T)
+        K_H2  = self.adsorption_constant(cfg.K_H2_ref,  cfg.dH_H2,  cfg, T)
 
         driving_force = (P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / np.maximum(cfg.k1_eq, 1.0e-12))
 
@@ -113,9 +115,11 @@ class ReactionRates:
         return np.nan_to_num(r1_vol, nan=0.0, posinf=1.0e-8, neginf=-1.0e-8)
 
     # Reaction 2: DMC formation
-    def r2_dmc(self, c: np.ndarray, cfg: ModelConfig|None=None, ) -> np.ndarray:
+    def r2_dmc(self, c: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> np.ndarray:
         if cfg is None:
             cfg = self.cfg
+        if T is None:
+            T = self.cfg.T
 
         P_pa, _P_bar, _y = self.partial_pressures(c, cfg)
 
@@ -124,8 +128,8 @@ class ReactionRates:
         P_H2O   = np.maximum(P_pa[..., 3], 0.0)
         P_DMC   = np.maximum(P_pa[..., 4], 0.0)
 
-        K_eq = self.k2_eq_T(cfg)
-        k2 = self.k_eff_r2(cfg) 
+        K_eq = self.k2_eq_T(cfg, T)
+        k2 = self.k_eff_r2(cfg, T)
 
         driving_force = ((P_CO2/cfg.p_stand) * (P_CH3OH/cfg.p_stand)**2 - ((P_DMC/cfg.p_stand) * (P_H2O/cfg.p_stand)) / np.maximum(K_eq, EPS))
         denominator = np.maximum(1.0 + cfg.k_ads1 * (P_CO2/cfg.p_stand) + cfg.k_ads2 * (P_CH3OH/cfg.p_stand), EPS) ** 3
@@ -139,17 +143,17 @@ class ReactionRates:
         return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
 
     #combined reaction rates and source terms
-    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig|None=None, ) -> tuple[np.ndarray, np.ndarray]:
+    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig|None=None) -> tuple[np.ndarray, np.ndarray]:
         if cfg is None:
             cfg = self.cfg
             
-        r1 = self.r1_methanol(c, cfg) # Methanol formation rate [mol/m3 s]
-        r2 = self.r2_dmc(c, cfg) # DMC formation rate [mol/m3 s]
+        r1 = self.r1_methanol(c[...,:-1], cfg, c[...,-1]) # Methanol formation rate [mol/m3 s]
+        r2 = self.r2_dmc(c[...,:-1], cfg, c[...,-1]) # DMC formation rate [mol/m3 s]
 
         return r1, r2
 
     # converts reaction rates into component source terms
-    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig|None=None, ) -> np.ndarray:
+    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig|None=None) -> np.ndarray:
         if cfg is None:
             cfg = self.cfg
 
@@ -157,6 +161,7 @@ class ReactionRates:
         rates = np.stack([r1, r2], axis=-1)  
         source = np.einsum("...r,rs->...s", rates, STOICH)
 
-        return source
+        heat = np.zeros(source.shape[:-1] + (1,))
+        return np.concatenate([source, heat], axis=-1)
     
    

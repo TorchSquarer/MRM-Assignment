@@ -50,11 +50,17 @@ class MembraneReactorModel:
         self.u0 = self._initial_state()
         self.u  = self.u0.copy()
 
-    # Build initial concentration field
+    # Build initial concentration field and temperature field
     def _initial_state(self) -> np.ndarray:
         u = np.zeros(self.shape)
-        u[:, :-1, :] = self.cfg.inlet_concentration.reshape(1, 1, self.cfg.n_c)
-        u[:, -1, :]  = 0.0
+        
+
+        # Initial Concentration Disctribution
+        u[:, :-1, :-1] = self.cfg.inlet_concentration.reshape(1, 1, self.cfg.n_c - 1)
+        u[:, -1, :-1]  = 0.0
+        
+        # Initial Temperature Disctribution
+        u[:,:,-1] = self.cfg.T
         return u
 
     # split full state array into model regions:
@@ -195,3 +201,59 @@ class MembraneReactorModel:
         wp_r2 = (r2_surface * cfg.particle_radius**2) / (cfg.D_eff * C_CO2)
 
         return wp_r1, wp_r2
+    
+    def _rho_gas(self, y: np.ndarray, T: float) -> float:
+        avg_Mw = np.sum(y * self.cfg.MW[:])
+        rho_avg = self.cfg.p * avg_Mw / (self.cfg.R * T)
+        return rho_avg
+    
+    def _Cp_gas(self, y: np.ndarray) -> float:
+        return np.sum(self.cfg.heat_capacity_gas[:] * y)
+    
+    def thermal_conductivity_ax(self)->np.ndarray: #, c: np.ndarray) -> np.ndarray:
+        """
+        c: 2DArray['N_steps', 'components']
+        1st, Wassilijewa Rule was applied here as the heat conductivity of the 
+        gas mixture is dependent on the contribution of all species. The 
+        proportions of these species change along of the reactor.
+        2nd, the conductivity in the axial direction is also dependent on the 
+        catalytic bed.
+        3rd, We neglect the contributions of DMC as its concentrations are extremely low.
+        """
+        cfg = self.cfg
+        
+        lam = cfg.heat_conductivity_gas[:]
+        lam_s = cfg.heat_conductivity_s
+        MW = cfg.MW[:]
+
+        lam_ratios = np.outer(lam, 1/lam)
+        MW_ratios = np.outer(MW, 1/MW)
+
+        Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
+        
+        c_g, _c_b, _c_p, _c_m = self.fields()
+        c_tot = c_g[:,:-1].sum(axis=1, keepdims=True)
+        y = c_g[:,:-1] / c_tot
+
+        N_steps = c_g.shape[0]
+        lam_ax = np.zeros(N_steps)
+
+        for i in range(0,N_steps):
+            denom_i = Phi_ij @ y[i,:]
+            lam_fluid = np.sum(y[i,:] * lam / denom_i)
+
+            lam_static = (1 + cfg.eps_s) * lam_fluid + cfg.eps_s * lam_s
+            
+            lam_ax[i] = lam_static + 0.5 * self._rho_gas(y[i,0], cfg.T) * self._Cp_gas(y[i,0]) * cfg.v_ret * cfg.d_p
+
+        return lam_ax
+    
+    def peklet_criterion(self):
+        cfg = self.cfg
+
+        c_g, _c_b, _c_p, _c_m = self.fields()
+        c_tot = c_g.sum(axis=1, keepdims=True)
+        y = c_g[:,:-1] / c_tot
+        Pe_ax = self._rho_gas(y, cfg.T) * self._Cp_gas(y) * cfg.v_ret * cfg.length / self.thermal_conductivity_ax()
+
+        return Pe_ax

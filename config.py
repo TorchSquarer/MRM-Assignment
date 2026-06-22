@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import sys
 import numpy as np
+import numpy.typing as npt
 
 for candidate in (Path.cwd(), Path.cwd().parent):
     pymrm_src = candidate / "pymrm" / "src"
@@ -18,7 +19,7 @@ class ModelConfig:
     R_out: float = 12e-3 # Outer reactor radius [m]
 
     # Membrane and flow parameters
-    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.0048, 0.000])) # Membrane permeability [m/s]
+    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.0048, 0.000, 0.0])) # Membrane permeability [m/s]
     v_ret: float = 0.05 # Retentate velocity [m/s]                                                                               
     v_perm: float = 0.10 # Permeate velocity [m/s]                                                                               
     
@@ -26,8 +27,7 @@ class ModelConfig:
     n_z: int = 100 # number of axial grid points
     n_r_perm: int = 30 # number of radial grid points in permeate
     n_r_ret: int = 30 # number of radial grid points in retentate
-    n_c: int = 5 # number of components
-
+    n_c: int = 6 # number of component + 1 for temperature
     # Operating conditions
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
@@ -63,6 +63,22 @@ class ModelConfig:
     
     MW: np.ndarray = field(
         default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3,90.08e-3]))  # Moleculat weight [kg/mol]
+    
+    heat_conductivity_gas: np.ndarray = field(       # Heat Conductivity [W/(m*K)] at T=537K and P=50bar found at NIST Chemistry Webbook
+        default_factory=lambda: np.array([0.037709,  # CO2 
+                                          0.28909,   # H2 
+                                          0.055131,  # CH3OH
+                                          0.60129,   # H2O
+                                          0.1]))     # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
+    heat_conductivity_s: float = 8.0 # Heat Conductivity of catalyst CeO2 (Suzuki K. et al 2019) [W/(m*K)]
+
+    heat_capacity_gas: np.ndarray = field(           # Heat Capacity [J/(mol*K)] at T=537K and P=50bar found at NIST Chemistry Webbook
+        default_factory=lambda: np.array([48.139,    # CO2
+                                          29.34,     # H2
+                                          108.95,    # CH3OH
+                                          79.952,    # H2O
+                                          462]))     # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
+
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
     T_ref: float = 573.15  # Reference temperature [K] (300 °C)
@@ -181,6 +197,7 @@ class ModelConfig:
     
     @property # effecitve difussivity inside catalyst
     def D_eff(self) -> float:
+<<<<<<< HEAD
         return (self.eps_p * self.particle_diffusivity[1]) / self.tortuosity
 
 # not sure what this is doing here but both the same formula as rho_gas
@@ -227,3 +244,6 @@ class ModelConfig:
 
 
 
+=======
+        return (self.eps_p * self.particle_diffusivity[1]) / self.tortuosity
+>>>>>>> main
