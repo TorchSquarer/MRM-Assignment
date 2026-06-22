@@ -50,11 +50,17 @@ class MembraneReactorModel:
         self.u0 = self._initial_state()
         self.u  = self.u0.copy()
 
-    # Build initial concentration field
+    # Build initial concentration field and temperature field
     def _initial_state(self) -> np.ndarray:
         u = np.zeros(self.shape)
-        u[:, :-1, :] = self.cfg.inlet_concentration.reshape(1, 1, self.cfg.n_c)
-        u[:, -1, :]  = 0.0
+        
+
+        # Initial Concentration Disctribution
+        u[:, :-1, :-1] = self.cfg.inlet_concentration.reshape(1, 1, self.cfg.n_c - 1)
+        u[:, -1, :-1]  = 0.0
+        
+        # Initial Temperature Disctribution
+        u[:,:,-1] = self.cfg.T
         return u
 
     # split full state array into model regions:
@@ -196,13 +202,13 @@ class MembraneReactorModel:
 
         return wp_r1, wp_r2
     
-    def rho_gas(self, y: np.ndarray, T: float) -> float:
-        avg_Mw = np.sum(y * self.cfg.MW[:-1])
+    def _rho_gas(self, y: np.ndarray, T: float) -> float:
+        avg_Mw = np.sum(y * self.cfg.MW[:])
         rho_avg = self.cfg.p * avg_Mw / (self.cfg.R * T)
         return rho_avg
     
-    def Cp_gas(self, y: np.ndarray) -> float:
-        return np.sum(self.cfg.heat_capacity_gas[:-1] * y)
+    def _Cp_gas(self, y: np.ndarray) -> float:
+        return np.sum(self.cfg.heat_capacity_gas[:] * y)
     
     def thermal_conductivity_ax(self)->np.ndarray: #, c: np.ndarray) -> np.ndarray:
         """
@@ -216,9 +222,9 @@ class MembraneReactorModel:
         """
         cfg = self.cfg
         
-        lam = cfg.heat_conductivity_gas[:-1]
+        lam = cfg.heat_conductivity_gas[:]
         lam_s = cfg.heat_conductivity_s
-        MW = cfg.MW[:-1]
+        MW = cfg.MW[:]
 
         lam_ratios = np.outer(lam, 1/lam)
         MW_ratios = np.outer(MW, 1/MW)
@@ -226,7 +232,7 @@ class MembraneReactorModel:
         Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
         
         c_g, _c_b, _c_p, _c_m = self.fields()
-        c_tot = c_g.sum(axis=1, keepdims=True)
+        c_tot = c_g[:,:-1].sum(axis=1, keepdims=True)
         y = c_g[:,:-1] / c_tot
 
         N_steps = c_g.shape[0]
@@ -238,7 +244,7 @@ class MembraneReactorModel:
 
             lam_static = (1 + cfg.eps_s) * lam_fluid + cfg.eps_s * lam_s
             
-            lam_ax[i] = lam_static + 0.5 * self.rho_gas(y[i,0], cfg.T) * self.Cp_gas(y[i,0]) * cfg.v_ret * cfg.d_p
+            lam_ax[i] = lam_static + 0.5 * self._rho_gas(y[i,0], cfg.T) * self._Cp_gas(y[i,0]) * cfg.v_ret * cfg.d_p
 
         return lam_ax
     
@@ -248,6 +254,6 @@ class MembraneReactorModel:
         c_g, _c_b, _c_p, _c_m = self.fields()
         c_tot = c_g.sum(axis=1, keepdims=True)
         y = c_g[:,:-1] / c_tot
-        Pe_ax = self.rho_gas(y, cfg.T) * self.Cp_gas(y) * cfg.v_ret * cfg.length / self.thermal_conductivity_ax()
+        Pe_ax = self._rho_gas(y, cfg.T) * self._Cp_gas(y) * cfg.v_ret * cfg.length / self.thermal_conductivity_ax()
 
         return Pe_ax

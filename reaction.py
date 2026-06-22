@@ -163,6 +163,7 @@ class ReactionRates:
         rates = np.stack([r1, r2], axis=-1)  
         source = np.einsum("...r,rs->...s", rates, STOICH)
 
-        return source
+        heat = np.zeros(source.shape[:-1] + (1,))
+        return np.concatenate([source, heat], axis=-1)
     
    

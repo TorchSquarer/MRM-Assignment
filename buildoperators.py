@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import numpy as np
+import scipy.sparse as sp
 
 from config import ModelConfig
 
@@ -64,19 +65,48 @@ class TransportOperators:
         self._build_particle_diffusion_operators(cfg)
         self._build_permeate_transport_operators(cfg)
 
+        #self._build_heat_transport_operators(cfg)
+
+    def _remove_D_ax_from_heat(self, A):
+        # Create a mask vector initialized to 1.0
+        mask_vector = np.ones(A.shape[0])
+
+        # Set every 6th element (all Temperature locations) to 0.0
+        mask_vector[5::6] = 0.0
+
+        # Convert the mask vector to a diagonal sparse matrix
+        M = sp.diags(mask_vector, format='csc')
+
+        # Multiplying clears out the temperature interactions in one operation
+        # (This acts on columns; swap order to A @ M depending on your index configuration)
+        A_final = M @ A 
+        return A_final
+
     # construct axial convection-dispersion operators for retentate gas
     def _build_gas_transport_operators(self, cfg: ModelConfig) -> None:
 
+        conditions_size = list(cfg.inlet_concentration.shape)
+        conditions_size[0] += 1
+        inlet_conditions = np.zeros(tuple(conditions_size))
+        inlet_conditions[:-1] = cfg.inlet_concentration
+        inlet_conditions[-1] = cfg.T
         # Boundary conditions:
         bc_axial = (
-            {"a": 0.0, "b": 1.0, "d": cfg.inlet_concentration},  # z=0: c = c_in
-            {"a": 1.0, "b": 0.0, "d": 0.0},                      # z=L: dc/dz = 0
+            {"a": 0.0, "b": 1.0, "d": inlet_conditions},  # for z=0: c = c_in and T = T_set
+            {"a": 1.0, "b": 0.0, "d": 0.0},               # z=L: dc/dz = 0 and dT/dz = 0
         )
 
         grad_mat, grad_bc = construct_grad(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, axis=0)
         conv_mat, conv_bc = construct_convflux_upwind(self.gas_shape, self.z_f, self.z_c, bc=bc_axial, v=cfg.v_ret, axis=0)
         div_mat = construct_div(self.gas_shape, self.z_f, axis=0)
-        d_ax_mat = construct_coefficient_matrix(cfg.d_ax, self.gas_shape, axis=0)
+
+        d_ax = np.zeros(cfg.n_c)
+        print(d_ax.shape)
+        print(cfg.d_ax.shape)
+        d_ax[:-1] = cfg.d_ax
+
+        d_ax_mat = construct_coefficient_matrix(d_ax, self.gas_shape, axis=0)
+        #d_ax_mat = self._remove_D_ax_from_heat(d_ax_mat)
         self.gas_transport_mat = div_mat @ (conv_mat - d_ax_mat @ grad_mat)
         self.gas_transport_const = div_mat @ (conv_bc - d_ax_mat @ grad_bc)
 
@@ -90,7 +120,15 @@ class TransportOperators:
 
         grad_p_mat, _, grad_p_bc = construct_grad(self.particle_shape, self.r_f_ret, self.r_c_ret, bc=bc_particle, axis=1, shapes_d=(None, self.boundary_shape), )
         div_p_mat = construct_div(self.particle_shape, self.r_f_ret, nu=2, axis=1)
-        d_p = cfg.particle_diffusivity.reshape(1, 1, cfg.n_c)
+        
+        # This 1D array contains the combined mass and heat conductivities
+        diffusivity_size = list(cfg.particle_diffusivity.shape)
+        diffusivity_size[0] += 1
+        diffusivity_all = np.zeros(tuple(diffusivity_size))
+        diffusivity_all[:-1] = cfg.particle_diffusivity
+        diffusivity_all[-1] = cfg.heat_conductivity_s
+        
+        d_p = diffusivity_all.reshape(1, 1, cfg.n_c)
         d_p_mat = construct_coefficient_matrix(d_p, self.particle_shape, axis=1)
         flux_p_mat = -d_p_mat @ grad_p_mat   
         flux_p_bc = -d_p_mat @ grad_p_bc    
@@ -120,3 +158,5 @@ class TransportOperators:
         div_mat_m = construct_div(self.gas_shape, self.z_f, axis=0)
         self.perm_transport_mat = div_mat_m @ conv_mat_m
         self.perm_transport_const = div_mat_m @ conv_bc_m
+
+#    

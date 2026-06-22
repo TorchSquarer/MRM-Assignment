@@ -19,7 +19,7 @@ class ModelConfig:
     R_out: float = 12e-3 # Outer reactor radius [m]
 
     # Membrane and flow parameters
-    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.0048, 0.000])) # Membrane permeability [m/s]
+    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.000, 0.000, 0.000, 0.0048, 0.000, 0.0])) # Membrane permeability [m/s]
     v_ret: float = 0.05 # Retentate velocity [m/s]                                                                               
     v_perm: float = 0.10 # Permeate velocity [m/s]                                                                               
     
