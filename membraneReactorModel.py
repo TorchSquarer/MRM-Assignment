@@ -196,7 +196,15 @@ class MembraneReactorModel:
 
         return wp_r1, wp_r2
     
-    def thermal_conductivity_ax(self, c: np.ndarray) -> np.ndarray:
+    def rho_gas(self, y: np.ndarray, T: float) -> float:
+        avg_Mw = np.sum(y * self.cfg.MW[:-1])
+        rho_avg = self.cfg.p * avg_Mw / (self.cfg.R * T)
+        return rho_avg
+    
+    def Cp_gas(self, y: np.ndarray) -> float:
+        return np.sum(self.cfg.heat_capacity_gas[:-1] * y)
+    
+    def thermal_conductivity_ax(self)->np.ndarray: #, c: np.ndarray) -> np.ndarray:
         """
         c: 2DArray['N_steps', 'components']
         1st, Wassilijewa Rule was applied here as the heat conductivity of the 
@@ -207,32 +215,39 @@ class MembraneReactorModel:
         3rd, We neglect the contributions of DMC as its concentrations are extremely low.
         """
         cfg = self.cfg
+        
         lam = cfg.heat_conductivity_gas[:-1]
         lam_s = cfg.heat_conductivity_s
-
         MW = cfg.MW[:-1]
+
         lam_ratios = np.outer(lam, 1/lam)
         MW_ratios = np.outer(MW, 1/MW)
 
         Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
         
-        N_steps = c.shape[0]
+        c_g, _c_b, _c_p, _c_m = self.fields()
+        c_tot = c_g.sum(axis=1, keepdims=True)
+        y = c_g[:,:-1] / c_tot
+
+        N_steps = c_g.shape[0]
         lam_ax = np.zeros(N_steps)
 
         for i in range(0,N_steps):
-            c_i = np.ravel(c[i,:])
-            c_tot = np.sum(c_i)
-            y = c_i / c_tot
-
-            denom_i = Phi_ij @ y
-            lam_fluid = np.sum(y * lam / denom_i)
+            denom_i = Phi_ij @ y[i,:]
+            lam_fluid = np.sum(y[i,:] * lam / denom_i)
 
             lam_static = (1 + cfg.eps_s) * lam_fluid + cfg.eps_s * lam_s
             
-            Cp_avg = np.sum(cfg.heat_capacity_gas[:-1] * y)
-
-            avg_Mw = np.sum(cfg.feed_y * cfg.MW)
-            rho_avg = cfg.p * avg_Mw / (cfg.R * cfg.T)
-            lam_ax[i] = lam_static + 0.5 * cfg.rho_gas * Cp_avg * cfg.v_ret * cfg.d_p
+            lam_ax[i] = lam_static + 0.5 * self.rho_gas(y[i,0], cfg.T) * self.Cp_gas(y[i,0]) * cfg.v_ret * cfg.d_p
 
         return lam_ax
+    
+    def peklet_criterion(self):
+        cfg = self.cfg
+
+        c_g, _c_b, _c_p, _c_m = self.fields()
+        c_tot = c_g.sum(axis=1, keepdims=True)
+        y = c_g[:,:-1] / c_tot
+        Pe_ax = self.rho_gas(y, cfg.T) * self.Cp_gas(y) * cfg.v_ret * cfg.length / self.thermal_conductivity_ax()
+
+        return Pe_ax
