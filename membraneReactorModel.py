@@ -195,3 +195,44 @@ class MembraneReactorModel:
         wp_r2 = (r2_surface * cfg.particle_radius**2) / (cfg.D_eff * C_CO2)
 
         return wp_r1, wp_r2
+    
+    def thermal_conductivity_ax(self, c: np.ndarray) -> np.ndarray:
+        """
+        c: 2DArray['N_steps', 'components']
+        1st, Wassilijewa Rule was applied here as the heat conductivity of the 
+        gas mixture is dependent on the contribution of all species. The 
+        proportions of these species change along of the reactor.
+        2nd, the conductivity in the axial direction is also dependent on the 
+        catalytic bed.
+        3rd, We neglect the contributions of DMC as its concentrations are extremely low.
+        """
+        cfg = self.cfg
+        lam = cfg.heat_conductivity_gas[:-1]
+        lam_s = cfg.heat_conductivity_s
+
+        MW = cfg.MW[:-1]
+        lam_ratios = np.outer(lam, 1/lam)
+        MW_ratios = np.outer(MW, 1/MW)
+
+        Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
+        
+        N_steps = c.shape[0]
+        lam_ax = np.zeros(N_steps)
+
+        for i in range(0,N_steps):
+            c_i = np.ravel(c[i,:])
+            c_tot = np.sum(c_i)
+            y = c_i / c_tot
+
+            denom_i = Phi_ij @ y
+            lam_fluid = np.sum(y * lam / denom_i)
+
+            lam_static = (1 + cfg.eps_s) * lam_fluid + cfg.eps_s * lam_s
+            
+            Cp_avg = np.sum(cfg.heat_capacity_gas[:-1] * y)
+
+            avg_Mw = np.sum(cfg.feed_y * cfg.MW)
+            rho_avg = cfg.p * avg_Mw / (cfg.R * cfg.T)
+            lam_ax[i] = lam_static + 0.5 * cfg.rho_gas * Cp_avg * cfg.v_ret * cfg.d_p
+
+        return lam_ax

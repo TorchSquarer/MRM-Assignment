@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import sys
 import numpy as np
+import numpy.typing as npt
 
 for candidate in (Path.cwd(), Path.cwd().parent):
     pymrm_src = candidate / "pymrm" / "src"
@@ -53,13 +54,20 @@ class ModelConfig:
     MW: np.ndarray = field(
         default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3,90.08e-3]))  # Moleculat weight [kg/mol]
     
-    heat_conductivity_gas: np.ndarray = field(       # heat_conductivity [W/(m*K)]
+    heat_conductivity_gas: np.ndarray = field(       # Heat Conductivity [W/(m*K)]
         default_factory=lambda: np.array([2.0e-6,    # CO2
                                           1.5e-6,    # H2
                                           1.5e-6,    # CH3OH
                                           1.5e-6,    # H2O
-                                          1]))       # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1
-    heat_conductivity_s: float = 100 # Heat Conductivity of catalyst (CeO2) [W/(m*K)]
+                                          1]))       # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
+    heat_conductivity_s: float = 8.0 # Heat Conductivity of catalyst CeO2 (Suzuki K. et al 2019) [W/(m*K)]
+
+    heat_capacity_gas: np.ndarray = field(           # Heat Capacity [W/(m*K)]
+        default_factory=lambda: np.array([2.0e-6,    # CO2
+                                          1.5e-6,    # H2
+                                          1.5e-6,    # CH3OH
+                                          1.5e-6,    # H2O
+                                          1]))       # DMC Couldn't find any, but it doesn't matter as y_DMC<<<1, so we just skip it
 
 
     # Kinetic Parameters: Reaction 1 (CO2 + 3H2 <-> MeOH + H2O) (Ghosh et al.)
@@ -187,25 +195,42 @@ class ModelConfig:
         avg_Mw = np.sum(self.feed_y * self.MW)
         return self.p * avg_Mw / (self.R * self.T)
     
-    def thermal_conductivity_ax(self, y: np.ndarray) -> np.ndarray:
+    def thermal_conductivity_ax(self, c: np.ndarray) -> np.ndarray:
         """
+        c: 2DArray['N_steps', 'components']
         1st, Wassilijewa Rule was applied here as the heat conductivity of the 
         gas mixture is dependent on the contribution of all species. The 
         proportions of these species change along of the reactor.
         2nd, the conductivity in the axial direction is also dependent on the 
         catalytic bed.
+        3rd, We neglect the contributions of DMC as its concentrations are extremely low.
         """
         lam = self.heat_conductivity_gas[:-1]
         lam_s = self.heat_conductivity_s
+
         MW = self.MW[:-1]
         lam_ratios = np.outer(lam, 1/lam)
         MW_ratios = np.outer(MW, 1/MW)
 
         Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
         
-        denom_i = Phi_ij @ y
-        lam_fluid = np.sum(y * lam / denom_i)
-        
-        lam_static = (1 + self.eps_s) * lam_fluid + self.eps_s * lam_s
+        N_steps = c.shape[0]
+        lam_ax = np.zeros(N_steps)
 
-        return lam_static + 0.5 * self.rho_gas * self.Cp_gas * self.v_ret * self.d_p
+        for i in range(0,N_steps):
+            c_i = np.ravel(c[i,:])
+            c_tot = np.sum(c_i)
+            y = c_i / c_tot
+
+            denom_i = Phi_ij @ y
+            lam_fluid = np.sum(y * lam / denom_i)
+
+            lam_static = (1 + self.eps_s) * lam_fluid + self.eps_s * lam_s
+            
+            Cp_avg = np.sum(self.heat_capacity_gas[:-1] * y)
+
+            avg_Mw = np.sum(self.feed_y * self.MW)
+            rho_avg = self.p * avg_Mw / (self.R * self.T)
+            lam_ax[i] = lam_static + 0.5 * self.rho_gas * Cp_avg * self.v_ret * self.d_p
+
+        return lam_ax
