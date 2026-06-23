@@ -122,7 +122,7 @@ class ReactionRates:
         k2 = self.k_eff_r2(cfg, T)
 
         driving_force = ((P_CO2/cfg.p_stand) * (P_CH3OH/cfg.p_stand)**2 - ((P_DMC/cfg.p_stand) * (P_H2O/cfg.p_stand)) / np.maximum(K_eq, EPS))
-        denominator = np.maximum(1.0 + cfg.k_ads1 * (P_CO2/cfg.p_stand) + cfg.k_ads2 * (P_CH3OH/cfg.p_stand), EPS) ** 3
+        denominator = np.maximum(1.0 + cfg.k_ads1 * (P_CO2/cfg.p_stand) + cfg.k_ads2 * (P_CH3OH/cfg.p_stand), EPS) 
 
         rho_cat_g_m3 = cfg.rho_bulk * 1000.0
 

@@ -174,8 +174,8 @@ class MembraneReactorModel:
         r1_surface = r1_surface[:, 0]
         r2_surface = r2_surface[:, 0]
 
-        r1_cat = (r1_surface / cfg.rho_bulk) # (mol/ kg cat * s)
-        r2_cat = (r2_surface / cfg.rho_bulk) # (mol/ kg cat * s)
+        r1_cat = (r1_surface / (cfg.rho_bulk * cfg.eps_s)) # (mol/ kg cat * s)
+        r2_cat = (r2_surface / (cfg.rho_bulk * cfg.eps_s)) # (mol/ kg cat * s)
 
         C_CO2 = np.maximum(c_g[:, 0], 1e-30)  # (mol/m^3)
 
