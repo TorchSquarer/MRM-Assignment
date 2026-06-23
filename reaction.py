@@ -14,141 +14,116 @@ STOICH = np.array(
 )
 
 # number to avoid division by zero
-EPS = 1.0e-30
+EPS = 1.0e-12
 
 class ReactionRates:
     def __init__(self, cfg: ModelConfig) -> None:
         self.cfg = cfg
         
-
-    # Composistion and pressure helpers
     # Convert concentration to mole fractions
-    def mole_fractions(self, c: np.ndarray) -> np.ndarray: 
-        c_pos = np.maximum(c, 0.0)
+    def mole_fractions(self, c_species: np.ndarray) -> np.ndarray: 
+        c_pos = np.maximum(np.asarray(c_species, dtype=float), 0.0)
         c_tot = np.maximum(np.sum(c_pos, axis=-1, keepdims=True), EPS)
         return c_pos / c_tot
 
-    def partial_pressures(self, c: np.ndarray, cfg: ModelConfig|None=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        if cfg is None:
-            cfg = self.cfg
-
-        y = self.mole_fractions(c)
-
-        P_total_pa = np.asarray(cfg.p, dtype=float)
-        P_pa = y * P_total_pa
+    def partial_pressures(self, c_species: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        y = self.mole_fractions(c_species)
+        P_pa = y * self.cfg.p
         P_bar = P_pa / 1.0e5
-
         return P_pa, P_bar, y
 
     # Temperature dependent adsorption constant
-    def adsorption_constant(self, K_ref: float, dH: float, cfg: ModelConfig, T: float|np.ndarray|None=None) -> float|np.ndarray:
-        if T is None:
-            T = cfg.T
-        return K_ref * np.exp((dH / cfg.R) * (1.0 / cfg.T_ref - 1.0 / T))
+    def adsorption_constant(self, K_ref: float, dH: float, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
+        T = np.maximum(np.asarray(T, dtype=float), 250.0)
+        return K_ref * np.exp((dH / cfg.R) * (1.0 / cfg.T_ref_1 - 1.0 / T))
     
     # Effective rate constant for methanol formation
-    def k_eff_r1(self, cfg: ModelConfig, T: float|np.ndarray|None=None,) -> float|np.ndarray:
-        if T is None:
-            T = cfg.T
+    def k_eff_r1(self, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
+        T = np.maximum(np.asarray(T, dtype=float), 250.0)
         return cfg.k1_pre * np.exp(
-            (cfg.Ea_1 / cfg.R) * (1.0 / cfg.T_ref - 1.0 / T))
+            (cfg.Ea_1 / cfg.R) * (1.0 / cfg.T_ref_1 - 1.0 / T))
 
     # Temperature dependent equillibrium constant for DMC formation
-    def k2_eq_T(self, cfg: ModelConfig, T: float|np.ndarray|None=None,) -> float|np.ndarray:
-        if T is None:
-            T = cfg.T
+    def k2_eq_T(self, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
+        T = np.maximum(np.asarray(T, dtype=float), 250.0)
 
-        K = (
-            - cfg.dG_DMC / (cfg.R * cfg.T_ref_DMC)
-            + cfg.dH_DMC / (cfg.R * cfg.T_ref_DMC) * (1 - cfg.T_ref_DMC / T)
-            - cfg.drC_p * (T - cfg.T_ref_DMC) / (cfg.R * T) 
-            + cfg.drC_p / cfg.R * np.log(T / cfg.T_ref_DMC)
+        lnK = (
+            - cfg.dG_DMC / (cfg.R * cfg.T_ref_2)
+            + cfg.dH_DMC / (cfg.R * cfg.T_ref_2) * (1 - cfg.T_ref_2 / T)
+            - cfg.drC_p * (T - cfg.T_ref_2) / (cfg.R * T) 
+            + cfg.drC_p / cfg.R * np.log(T / cfg.T_ref_2)
             )
 
-        return np.exp(K) 
+        return np.exp(np.clip(lnK, -100.0, 100.0))
     
     # Effective rate constant for DMC formation
-    def k_eff_r2(self, cfg: ModelConfig, T: float|np.ndarray|None=None,) -> float | np.ndarray:
-        if T is None:
-            T = cfg.T
-
-        k_s = (cfg.k2_pre * np.exp(-cfg.Ea_DMC / (cfg.R * T)))
-
-        # Convert from min^-1 to s^-1
-        return k_s / 60.0
+    def k_eff_r2(self, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
+        T = np.maximum(np.asarray(T, dtype=float), 250.0)
+        exp = cfg.Ea_DMC / cfg.R * (1.0 / cfg.T_ref_2 - 1 / T)
+        exp = np.clip(exp, -50.0, 50.0)
+        return  cfg.k2_pre * np.exp(exp)
 
 
     # Reaction 1: Methanol formation
-    def r1_methanol(self, c: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> np.ndarray:
-        if cfg is None:
-            cfg = self.cfg
-        if T is None:
-            T = self.cfg.T
+    def r1_methanol(self, c_species: np.ndarray, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
 
-        _P_pa, P_bar, _y = self.partial_pressures(c, cfg)
+        _P_pa, P_bar, _y = self.partial_pressures(c_species)
 
         P_CO2   = np.maximum(P_bar[..., 0], 0.0)
         P_H2    = np.maximum(P_bar[..., 1], 1e-8)
         P_CH3OH = np.maximum(P_bar[..., 2], 0.0)
         P_H2O   = np.maximum(P_bar[..., 3], 0.0)
 
-        K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, cfg, T)
-        K_H2  = self.adsorption_constant(cfg.K_H2_ref,  cfg.dH_H2,  cfg, T)
+        K_CO2 = self.adsorption_constant(cfg.K_CO2_ref, cfg.dH_CO2, T)
+        K_H2 = self.adsorption_constant(cfg.K_H2_ref, cfg.dH_H2, T)
 
-        driving_force = (P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / np.maximum(cfg.k1_eq, 1.0e-12))
-
+        driving_force = P_CO2 * P_H2**3 - (P_CH3OH * P_H2O) / max(cfg.k1_eq, EPS)
         inhibition = (1.0 + K_CO2 * P_CO2 + np.sqrt(np.maximum(K_H2 * P_H2, 0.0))) ** 2
-        denominator = P_H2**2 * np.maximum(inhibition, 1e-12)
-    
-        r1_mass = self.k_eff_r1(cfg) * driving_force / denominator
-        r1_vol = cfg.r1_scale * r1_mass * cfg.rho_bulk
-        return np.nan_to_num(r1_vol, nan=0.0, posinf=1.0e-8, neginf=-1.0e-8)
+        denominator = np.maximum(P_H2**2 * inhibition, EPS)
+
+        r_mass = self.k_eff_r1(T) * driving_force / denominator
+        r_vol = cfg.r1_scale * r_mass * cfg.rho_bulk * cfg.eps_s
+        return np.nan_to_num(r_vol, nan=0.0, posinf=1.0e4, neginf=-1.0e4)
 
     # Reaction 2: DMC formation
-    def r2_dmc(self, c: np.ndarray, cfg: ModelConfig|None=None, T: float|np.ndarray|None=None) -> np.ndarray:
-        if cfg is None:
-            cfg = self.cfg
-        if T is None:
-            T = self.cfg.T
+    def r2_dmc(self, c_species: np.ndarray, T: float | np.ndarray) -> np.ndarray:
+        cfg = self.cfg
+        P_pa, _P_bar, _y = self.partial_pressures(c_species)
 
-        P_pa, _P_bar, _y = self.partial_pressures(c, cfg)
+        P_CO2 = np.maximum(P_pa[..., 0], 0.0)
+        P_CH3OH = np.maximum(P_pa[..., 2], 0.0)
+        P_H2O = np.maximum(P_pa[..., 3], 0.0)
+        P_DMC = np.maximum(P_pa[..., 4], 0.0)
 
-        P_CO2   = np.maximum(P_pa[..., 0], 0.0)
-        P_CH3OH = np.maximum(P_pa[..., 2], 1e-3)
-        P_H2O   = np.maximum(P_pa[..., 3], 0.0)
-        P_DMC   = np.maximum(P_pa[..., 4], 0.0)
+        K_eq = np.maximum(self.k2_eq_T(T), EPS)
+        k2 = self.k_eff_r2(T)
 
-        K_eq = self.k2_eq_T(cfg, T)
-        k2 = self.k_eff_r2(cfg, T)
+        driving_force = ((P_CO2 / cfg.p_stand) * (P_CH3OH / cfg.p_stand) ** 2
+                        - ((P_DMC / cfg.p_stand) * (P_H2O / cfg.p_stand)) / K_eq)
+        
+        denominator = np.maximum((P_CH3OH/cfg.p_stand) 
+                        * (1.0 + cfg.k_ads1 * (P_CH3OH / cfg.p_stand) 
+                        + cfg.k_ads2 * (P_CH3OH / cfg.p_stand) * (P_CO2/cfg.p_stand)), EPS) 
 
-        driving_force = ((P_CO2/cfg.p_stand) * (P_CH3OH/cfg.p_stand)**2 - ((P_DMC/cfg.p_stand) * (P_H2O/cfg.p_stand)) / np.maximum(K_eq, EPS))
-        denominator = np.maximum(1.0 + cfg.k_ads1 * (P_CO2/cfg.p_stand) + cfg.k_ads2 * (P_CH3OH/cfg.p_stand), EPS) 
-
-        rho_cat_g_m3 = cfg.rho_bulk * 1000.0
-
-        r2_vol = cfg.r2_scale * rho_cat_g_m3 * k2 * driving_force / denominator
-        return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
-
+        r_mass = k2 * driving_force / denominator
+        r_vol = cfg.r2_scale * r_mass * cfg.rho_bulk / cfg.Mw_cat
+        return np.nan_to_num(r_vol, nan=0.0, posinf=1.0e20, neginf=-1.0e20)
+    
     #combined reaction rates and source terms
-    def reaction_rates(self, c: np.ndarray, cfg: ModelConfig|None=None) -> tuple[np.ndarray, np.ndarray]:
-        if cfg is None:
-            cfg = self.cfg
-            
-        r1 = self.r1_methanol(c[...,:-1], cfg, c[...,-1]) # Methanol formation rate [mol/m3 s]
-        r2 = self.r2_dmc(c[...,:-1], cfg, c[...,-1]) # DMC formation rate [mol/m3 s]
-
-        return r1, r2
+    def reaction_rates(self, c_species: np.ndarray, T: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return self.r1_methanol(c_species, T), self.r2_dmc(c_species, T)
 
     # converts reaction rates into component source terms
-    def particle_reaction_rates(self, c_p: np.ndarray, cfg: ModelConfig|None=None) -> np.ndarray:
-        if cfg is None:
-            cfg = self.cfg
+    def species_source(self, c_species: np.ndarray, T: float | np.ndarray) -> np.ndarray:
+        r1, r2 = self.reaction_rates(c_species, T)
+        rates = np.stack([r1, r2], axis=-1)
+        return np.einsum("...r,rs->...s", rates, STOICH)
 
-        r1, r2 = self.reaction_rates(c_p, cfg)
-        rates = np.stack([r1, r2], axis=-1)  
-        source = np.einsum("...r,rs->...s", rates, STOICH)
-
-        heat = np.zeros(source.shape[:-1] + (1,))
-        return np.concatenate([source, heat], axis=-1)
-    
-   
+    def heat_source(self, c_species: np.ndarray, T: float | np.ndarray) -> np.ndarray:
+        r1, r2 = self.reaction_rates(c_species, T)
+        return -(self.cfg.dH_r1 * r1 + self.cfg.dH_DMC * r2)

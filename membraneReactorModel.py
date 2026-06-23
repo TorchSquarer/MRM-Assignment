@@ -2,10 +2,12 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import numpy as np
+from scipy.integrate import solve_ivp
+from dataclasses import dataclass
 
 from config import ModelConfig
 from buildoperators import TransportOperators
-from reaction import ReactionRates
+from reaction import ReactionRates, SPECIES_LABELS, STOICH
 
 for candidate in (Path.cwd(), Path.cwd().parent):
     pymrm_src = candidate / "pymrm" / "src"
@@ -17,14 +19,12 @@ from pymrm import (
     newton,
 )
 
-STOICH = np.array(
-    [
-        [-1.0, -3.0,  1.0,  1.0,  0.0],  # R1: CO2 + 3H2 <-> CH3OH + H2O
-        [-1.0,  0.0, -2.0,  1.0,  1.0],  # R2: CO2 + 2CH3OH <-> DMC + H2O
-    ]
-)
-
-SPECIES_LABELS = ("CO2", "H2", "CH3OH", "H2O", "DMC")
+@dataclass
+class SimpleResult:
+    success: bool
+    message: str
+    nfev: int
+    x: np.ndarray
 
 # Full membrane reactor model
 class MembraneReactorModel:
@@ -37,150 +37,201 @@ class MembraneReactorModel:
         self.reac = ReactionRates(cfg)
 
         # State array shapes
-        self.shape = (cfg.n_z, cfg.n_r_ret + 3, cfg.n_c)
-        self.gas_shape = (cfg.n_z, cfg.n_c)
-        self.particle_shape = (cfg.n_z, cfg.n_r_ret, cfg.n_c)
+        self.shape = (cfg.n_z, 2, cfg.n_c)
 
-        # Grid coordinates for plotting/post-processing
+        # Grid coordinates
         self.z_c    = self.ops.z_c
-        self.r_c    = self.ops.r_c_ret
 
-        # Numerical Jacobian configuration
-        self.numjac = NumJac(self.shape, axes_diagonals=[0], axes_blocks=[1, 2])
         self.u0 = self._initial_state()
-        self.u  = self.u0.copy()
+        self.y0 = self._initial_state().ravel()
+        self.u  = np.zeros(self.shape)
+        self.result: SimpleResult | None = None
 
     # Build initial concentration field and temperature field
     def _initial_state(self) -> np.ndarray:
-        u = np.zeros(self.shape)
-        
-
+        cfg = self.cfg
+        u0 = np.zeros((2, cfg.n_c), dtype=float)
         # Initial Concentration Disctribution
-        u[:, :-1, :-1] = self.cfg.inlet_concentration.reshape(1, 1, self.cfg.n_c - 1)
-        u[:, -1, :-1]  = 0.0
-        
-        # Initial Temperature Disctribution
-        u[:,:,-1] = self.cfg.T
-        return u
+        u0[0, :] = cfg.inlet_state
+        u0[1, :]  = cfg.perm_inlet
+        return u0.ravel()
 
     # split full state array into model regions:
-    # c_g is retentate bulk gas, c_b is particle surface conentration, 
-    # c_p is intraparticle concentration and c_m is permeate concentration [mol/m3]
-    def split_state(self, u: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        u = u.reshape(self.shape)
-        return u[:, 0, :], u[:, 1, :], u[:, 2:-1, :], u[:, -1, :]
+    # c_ret is retentate bulk gas, c_perm is permeate concentration [mol/m3]
+    def split_state(self, y: np.ndarray) -> tuple[np.ndarray, float, np.ndarray, float]:
+        cfg = self.cfg
+        y = np.asarray(y, dtype=float).reshape(2, cfg.n_c)
 
-    # volume-averages the intraparticle reaction source over the particle radius
-    def _particle_average_source(self, c_p: np.ndarray) -> np.ndarray:
-        source = self.reac.particle_reaction_rates(c_p, self.cfg)
-        return np.sum(source * self.ops.volume_weights.reshape(1, -1, 1), axis=1)
+        ret = y[0, :]
+        perm = y[1, :]
 
-    # calculates apparent gas-particle exchange source from particle surface flux
-    def _particle_apparent_source(self, c_p: np.ndarray, c_b: np.ndarray) -> np.ndarray:
-        ops = self.ops
-        c_p_vec = c_p.reshape(-1, 1)
-        c_b_vec = c_b[:, None, :].reshape(-1, 1)
-        return (
-            ops.particle_apparent_mat    @ c_p_vec
-            + ops.particle_apparent_bc_mat @ c_b_vec
-        ).reshape(self.gas_shape)
+        c_ret = np.maximum(ret[: cfg.n_species], 0.0)
+        T_ret = float(max(ret[cfg.iT], 250.0))
+
+        c_perm = np.maximum(perm[: cfg.n_species], 0.0)
+        T_perm = float(max(perm[cfg.iT], 250.0))
+
+        return c_ret, T_ret, c_perm, T_perm
+    
+    def reaction_source(self, c_ret: np.ndarray, T: float,) -> tuple[np.ndarray, float, float, float]:
+        cfg = self.cfg
+
+        c_2d = np.asarray(c_ret, dtype=float).reshape(1, cfg.n_species)
+        T_1d = np.array([T], dtype=float)
+
+        source = self.reac.species_source(c_2d, T_1d)[0]
+        q_rxn = float(self.reac.heat_source(c_2d, T_1d)[0])
+
+        r1, r2 = self.reac.reaction_rates(c_2d, T_1d)
+
+        return source, q_rxn, float(r1[0]), float(r2[0])
+
+    def rhoCp_retentate(self, c_ret: np.ndarray) -> float:
+        cfg = self.cfg
+
+        c_ret = np.asarray(c_ret, dtype=float)
+        gas = cfg.eps_bed * float(c_ret @ cfg.heat_capacity_gas)
+        solid = cfg.rho_bulk * cfg.Cp_solid
+
+        return max(gas + solid, cfg.rhoCp_floor)
+
+
+    def rhoCp_permeate(self, c_perm: np.ndarray) -> float:
+        cfg = self.cfg
+
+        c_perm = np.asarray(c_perm, dtype=float)
+        gas = float(c_perm @ cfg.heat_capacity_gas)
+
+        return max(gas, cfg.rhoCp_floor)
 
     # Evaluates nonlinear residual calues
-    def residual_values(self, u: np.ndarray) -> np.ndarray:
+    def residual_values(self, y: np.ndarray) -> np.ndarray:
         cfg = self.cfg
-        ops = self.ops
 
-        c_g, c_b, c_p, c_m = self.split_state(u)
-        residual = np.zeros_like(u).reshape(self.shape)
+        c_ret, T_ret, c_perm, T_perm = self.split_state(y)
 
-        # [0] Retentate bulk: convection–dispersion – apparent source + membrane loss
-        gas_transport = (
-            ops.gas_transport_const
-            + ops.gas_transport_mat @ c_g.reshape(-1, 1)
-            ).reshape(self.gas_shape)
-            
-        membrane_flux = cfg.P_membrane.reshape(1, -1) * (c_g - c_m)
-        source_reactor = cfg.eps_s * self._particle_apparent_source(c_p, c_b)
+        source_ret, q_ret, _r1_ret, _r2_ret = self.reaction_source(c_ret, T_ret)
+        source_perm = np.zeros(cfg.n_species)
+        q_perm = 0.0
 
-        residual[:, 0, :] = gas_transport - source_reactor + cfg.a_ret * membrane_flux
-        
-        # [1] Boundary layer constraint, no external film resistance
-        residual[:, 1, :] = c_b - c_g 
-        
-        # [2:-1] Intraparticle diffusion–reaction
-        particle_diffusion = (
-            ops.particle_diffusion_mat @ c_p.reshape(-1, 1)
-            + ops.particle_boundary_mat @ c_b[:, None, :].reshape(-1, 1)
-            ).reshape(self.particle_shape)
+        P_species = np.asarray(cfg.P_species, dtype=float)
 
-        source_particle = self.reac.particle_reaction_rates(c_p, cfg)
+        J_mem = np.zeros(cfg.n_species, dtype = float)
+        mask = P_species != 0.0
 
-        residual[:, 2:-1, :] = particle_diffusion - source_particle
+        J_mem[mask] = P_species[mask] * (c_ret[mask] - c_perm[mask])
 
-        # [-1] Permeate gas balance, axial convection + membrane gain
-        permeate_transport = (
-            ops.perm_transport_const
-            + ops.perm_transport_mat @ c_m.reshape(-1, 1)
-            ).reshape(self.gas_shape)
+        # Positive q_mem means heat retentate -> permeate
+        q_mem = cfg.U_mem * (T_ret - T_perm)  # [W/m2]
 
-        residual[:, -1, :] = permeate_transport - cfg.a_perm * membrane_flux
+        rhoCp_ret = self.rhoCp_retentate(c_ret)
+        rhoCp_perm = self.rhoCp_permeate(c_perm)
 
-        return residual
+        dy = np.zeros((2, cfg.n_c), dtype=float)
 
-    # Returns residual vector and numerical Jacobion for Newton solver
-    def residual(self, u: np.ndarray) -> tuple[np.ndarray, np.ndarray]:   
-        u = u.reshape(self.shape)
-        f = self.residual_values(u)
-        f, jac = self.numjac(self.residual_values, u, f_value=f)
-        return f.ravel(), jac
+        # Retentate species balances:
+        # v_ret dc_ret/dz = reaction source - membrane removal
+        dy[0, :cfg.n_species] = (source_ret - cfg.a_ret * J_mem) / cfg.v_ret
+
+        # Retentate energy balance:
+        # v_ret rhoCp_ret dT_ret/dz = reaction heat - heat loss through membrane
+        dy[0, cfg.iT] = (q_ret - cfg.a_ret * q_mem) / (cfg.v_ret * rhoCp_ret)
+
+        # Permeate species balances:
+        # v_perm dc_perm/dz = membrane addition
+        dy[1, :cfg.n_species] = (source_perm + cfg.a_perm * J_mem) / cfg.v_perm
+
+        # Permeate energy balance:
+        # v_perm rhoCp_perm dT_perm/dz = heat received through membrane
+        dy[1, cfg.iT] = (q_perm + cfg.a_perm * q_mem) / (cfg.v_perm * rhoCp_perm)
+
+        return np.nan_to_num(dy.reshape(-1), nan=0.0, posinf=1.0e20, neginf=-1.0e20)
+
+    def rhs(self, z: float, y: np.ndarray) -> np.ndarray:
+        return self.residual_values(y)
 
     # Solves the nonlinear Steady-state model
-    def solve(self):
-        result = newton(self.residual, self.u, tol=self.cfg.tol, maxfev=self.cfg.maxfev, solver="spsolve")
-        self.u = result.x.reshape(self.shape)
-        self.result = result
-        return result
+    def solve(self) -> SimpleResult:
+        cfg = self.cfg
+
+        y0 = self._initial_state()
+        z_eval = self.z_c
+       
+        z_eval[0] = 0.0
+        z_eval[-1] = cfg.length
+
+        sol = solve_ivp(self.rhs, 
+                        t_span=(0.0, cfg.length), 
+                        y0=y0, method=cfg.method, 
+                        t_eval=z_eval, 
+                        rtol=cfg.tol,
+                        atol=cfg.tol*1e-3,
+                        )
+        
+        if sol.y.shape[1] != cfg.n_z:
+            # Fall back to interpolation if the solver returns a different grid.
+            y_grid = np.vstack([np.interp(z_eval, sol.t, sol.y[i, :]) for i in range(sol.y.shape[0])])
+        else:
+            y_grid = sol.y
+
+        u = np.zeros(self.shape)
+        for i in range(cfg.n_z):
+            y = y_grid[:, i]
+            u[i, 0, :] = y[: cfg.n_c]
+            u[i, 1, :] = y[cfg.n_c :]
+
+        # Remove tiny negative numerical noise in concentrations, but not in temperature.
+        u[:, :, : cfg.n_species] = np.maximum(u[:, :, : cfg.n_species], 0.0)
+        u[:, :, cfg.iT] = np.maximum(u[:, :, cfg.iT], 250.0)
+
+        self.u = u
+        self.result = SimpleResult(
+            success=bool(sol.success),
+            message=str(sol.message),
+            nfev=int(sol.nfev),
+            x=u.ravel(),
+        )
+        return self.result
     
     # Return solved concentration fields
     def fields(self,) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        return self.split_state(self.u)
+        cfg = self.cfg
+        c_ret = self.u[:, 0, : cfg.n_species]
+        T_ret = self.u[:, 0, cfg.iT]
+        c_perm = self.u[:, 1, : cfg.n_species]
+        T_perm = self.u[:, 1, cfg.iT]
+        return c_ret, T_ret, c_perm, T_perm
+    
+    def outlet_values(self) -> dict[str, np.ndarray | float]:
+        c_ret, T_ret, c_perm, T_perm = self.fields()
+        return {
+            "c_ret_out": c_ret[-1, :].copy(),
+            "T_ret_out": float(T_ret[-1]),
+            "c_perm_out": c_perm[-1, :].copy(),
+            "T_perm_out": float(T_perm[-1]),
+        }
 
-    # Calculates axial catalyst effectiveness factors for both reactions
-    def effectiveness_profile(self,) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        _c_g, c_b, c_p, _c_m = self.fields()
-        r1_int, r2_int = self.reac.reaction_rates(c_p, self.cfg)
-        weights = self.ops.volume_weights.reshape(1, -1)
-
-        r1_apparent = np.sum(r1_int * weights, axis=1)
-        r2_apparent = np.sum(r2_int * weights, axis=1)
-
-        r1_surf_full, r2_surf_full = self.reac.reaction_rates(c_b[:, None, :], self.cfg)
-      
-        r1_surface = r1_surf_full[:, 0]   
-        r2_surface = r2_surf_full[:, 0]   
-
-        eta_r1 = r1_apparent / np.maximum(r1_surface, 1.0e-30)
-        eta_r2 = r2_apparent / np.maximum(r2_surface, 1.0e-30)
-        return eta_r1, eta_r2, r1_surface, r2_surface
+    def conversions(self) -> dict[str, float]:
+        c_ret, _T_ret, _c_perm, _T_perm = self.fields()
+        c_in = self.cfg.inlet_concentration
+        out = c_ret[-1, :]
+        return {
+            "X_CO2_retentate": float((c_in[0] - out[0]) / max(c_in[0], 1.0e-30)),
+            "X_H2_retentate": float((c_in[1] - out[1]) / max(c_in[1], 1.0e-30)),
+        }
     
     # calculates mears criterian for the external mass transfer
     def mears_criterion(self):
         cfg = self.cfg
 
-        c_g, c_b, c_p, c_m = self.fields()
+        c_ret, T_ret, _c_perm, _T_perm = self.fields()
 
-        r1_surface, r2_surface = self.reac.reaction_rates(c_b[:, None, :], cfg)
+        r1, r2 = self.reac.reaction_rates(c_ret, T_ret)
 
-        r1_surface = r1_surface[:, 0]
-        r2_surface = r2_surface[:, 0]
+        C_CO2 = np.maximum(c_ret[:, 0], 1.0e-30)
 
-        r1_cat = (r1_surface / (cfg.rho_bulk * cfg.eps_s)) # (mol/ kg cat * s)
-        r2_cat = (r2_surface / (cfg.rho_bulk * cfg.eps_s)) # (mol/ kg cat * s)
-
-        C_CO2 = np.maximum(c_g[:, 0], 1e-30)  # (mol/m^3)
-
-        mears_r1 = (r1_cat * cfg.particle_radius * cfg.n) / (cfg.K_gs * C_CO2)
-        mears_r2 = (r2_cat * cfg.particle_radius * cfg.n) / (cfg.K_gs * C_CO2)
+        mears_r1 = np.abs(r1) * cfg.particle_radius * cfg.n / (cfg.K_gs * C_CO2)
+        mears_r2 = np.abs(r2) * cfg.particle_radius * cfg.n / (cfg.K_gs * C_CO2)
 
         return mears_r1, mears_r2
     
@@ -188,72 +239,23 @@ class MembraneReactorModel:
     def weisz_prater_criterion(self):
         cfg = self.cfg
 
-        c_g, c_b, c_p, c_m = self.fields()
+        c_ret, T_ret, _c_perm, _T_perm = self.fields()
 
-        r1_surface, r2_surface = self.reac.reaction_rates(c_b[:, None, :], cfg)
+        r1, r2 = self.reac.reaction_rates(c_ret, T_ret)
 
-        r1_surface = r1_surface[:, 0]
-        r2_surface = r2_surface[:, 0]
+        C_CO2 = np.maximum(c_ret[:, 0], 1.0e-30)
 
-        C_CO2 = np.maximum(c_g[:, 0], 1e-30)
+        D_eff_CO2 = cfg.eps_p * cfg.particle_diffusivity[0] / cfg.tortuosity
 
-        wp_r1 = (r1_surface * cfg.particle_radius**2) / (cfg.D_eff * C_CO2)
-        wp_r2 = (r2_surface * cfg.particle_radius**2) / (cfg.D_eff * C_CO2)
+        wp_r1 = np.abs(r1) * cfg.particle_radius**2 / (D_eff_CO2 * C_CO2)
+        wp_r2 = np.abs(r2) * cfg.particle_radius**2 / (D_eff_CO2 * C_CO2)
 
         return wp_r1, wp_r2
     
-    def _rho_gas(self, y: np.ndarray, T: float) -> float:
-        avg_Mw = np.sum(y * self.cfg.MW[:])
-        rho_avg = self.cfg.p * avg_Mw / (self.cfg.R * T)
-        return rho_avg
     
-    def _Cp_gas(self, y: np.ndarray) -> float:
-        return np.sum(self.cfg.heat_capacity_gas[:] * y)
-    
-    def thermal_conductivity_ax(self)->np.ndarray: #, c: np.ndarray) -> np.ndarray:
-        """
-        c: 2DArray['N_steps', 'components']
-        1st, Wassilijewa Rule was applied here as the heat conductivity of the 
-        gas mixture is dependent on the contribution of all species. The 
-        proportions of these species change along of the reactor.
-        2nd, the conductivity in the axial direction is also dependent on the 
-        catalytic bed.
-        3rd, We neglect the contributions of DMC as its concentrations are extremely low.
-        """
+    # calculates the peclet number for heat transfer
+    def thermal_peclet(self):
         cfg = self.cfg
-        
-        lam = cfg.heat_conductivity_gas[:]
-        lam_s = cfg.heat_conductivity_s
-        MW = cfg.MW[:]
-
-        lam_ratios = np.outer(lam, 1/lam)
-        MW_ratios = np.outer(MW, 1/MW)
-
-        Phi_ij = (1 + np.sqrt(lam_ratios) * MW_ratios**0.25)**2 / np.sqrt(8 * (1 + MW_ratios))
-        
-        c_g, _c_b, _c_p, _c_m = self.fields()
-        c_tot = c_g[:,:-1].sum(axis=1, keepdims=True)
-        y = c_g[:,:-1] / c_tot
-
-        N_steps = c_g.shape[0]
-        lam_ax = np.zeros(N_steps)
-
-        for i in range(0,N_steps):
-            denom_i = Phi_ij @ y[i,:]
-            lam_fluid = np.sum(y[i,:] * lam / denom_i)
-
-            lam_static = (1 + cfg.eps_s) * lam_fluid + cfg.eps_s * lam_s
-            
-            lam_ax[i] = lam_static + 0.5 * self._rho_gas(y[i,0], cfg.T) * self._Cp_gas(y[i,0]) * cfg.v_ret * cfg.d_p
-
-        return lam_ax
-    
-    def peklet_criterion(self):
-        cfg = self.cfg
-
-        c_g, _c_b, _c_p, _c_m = self.fields()
-        c_tot = c_g.sum(axis=1, keepdims=True)
-        y = c_g[:,:-1] / c_tot
-        Pe_ax = self._rho_gas(y, cfg.T) * self._Cp_gas(y) * cfg.v_ret * cfg.length / self.thermal_conductivity_ax()
-
-        return Pe_ax
+        c_ret, T_ret, c_perm, T_perm = self.fields()
+        Pe_T = cfg.rho_gas * self.rhoCp_retentate(c_ret, cfg) * cfg.v_ret * cfg.length / cfg.thermal_conductivity
+        return Pe_T
