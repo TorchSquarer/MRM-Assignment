@@ -59,33 +59,23 @@ class ReactionRates:
             T = cfg.T
 
         K = (
-            -cfg.dG_DMC / (cfg.R * cfg.T_ref_DMC)
-            + (cfg.dH_DMC / cfg.R) * (1.0 / cfg.T_ref_DMC - 1.0 / T)
+            - cfg.dG_DMC / (cfg.R * cfg.T_ref_DMC)
+            + cfg.dH_DMC / (cfg.R * cfg.T_ref_DMC) * (1 - cfg.T_ref_DMC / T)
+            - cfg.drC_p * (T - cfg.T_ref_DMC) / (cfg.R * T) 
+            + cfg.drC_p / cfg.R * np.log(T / cfg.T_ref_DMC)
             )
+
         return np.exp(K) 
     
     # Effective rate constant for DMC formation
-    def k_eff_r2(self, cfg: ModelConfig, P_total_pa: float|np.ndarray|None=None, T: float|np.ndarray|None=None,) -> float | np.ndarray:
+    def k_eff_r2(self, cfg: ModelConfig, T: float|np.ndarray|None=None,) -> float | np.ndarray:
         if T is None:
             T = cfg.T
 
-        if P_total_pa is None:
-            P_total_pa = cfg.p
-
-        # Arrhenius temperature term
-        exponent_T = -cfg.Ea_DMC / (cfg.R * T)
-        exponent_T = np.clip(exponent_T, -700.0, 700.0)
-
-        k_min = cfg.k2_pre * np.exp(exponent_T)
-
-        # Pressure correction term
-        exponent_P = -cfg.dV * (P_total_pa - cfg.p_0) / (cfg.R * T)
-        exponent_P = np.clip(exponent_P, -700.0, 700.0)
-
-        k_min *= np.exp(exponent_P)
+        k_s = (cfg.k2_pre * np.exp(-cfg.Ea_DMC / (cfg.R * T)))
 
         # Convert from min^-1 to s^-1
-        return k_min / 60.0
+        return k_s / 60.0
 
 
     # Reaction 1: Methanol formation
@@ -136,10 +126,7 @@ class ReactionRates:
 
         rho_cat_g_m3 = cfg.rho_bulk * 1000.0
 
-        c_ref = np.minimum(np.maximum(c[..., 0], 0.0),
-                           np.maximum(c[..., 2], 0.0) / 2.0)
-
-        r2_vol = cfg.r2_scale * c_ref * rho_cat_g_m3 * k2 * driving_force / denominator
+        r2_vol = cfg.r2_scale * rho_cat_g_m3 * k2 * driving_force / denominator
         return np.nan_to_num(r2_vol, nan=0.0, posinf=1.0e30, neginf=-1.0e30)
 
     #combined reaction rates and source terms
