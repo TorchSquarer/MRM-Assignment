@@ -15,7 +15,7 @@ class ModelConfig:
     n_z: int = 100 # number of axial grid points
     n_r_perm: int = 30 # number of radial grid points in permeate
     n_r_ret: int = 30 # number of radial grid points in retentate
-    n_species: int = 5 # number of components
+    n_species: int = 6 # number of components
 
     @property
     def n_c(self) -> int:
@@ -29,6 +29,7 @@ class ModelConfig:
     P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0, 0.0048, 0.0, 0.0])) # Membrane permeability [m/s]
     v_ret: float = 0.05 # Retentate velocity [m/s]                                                                               
     v_perm: float = 0.10 # Permeate velocity [m/s]  
+    sweep_y: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])) # Sweep gas mole fractions [-]
     U_mem: float = 0.0 # overall heat-transfer coefficient [W/(m2 K)]
     thermal_conductivity_gas: float = 0.15  # W/(m K), rough estimate                                                                           
     
@@ -36,6 +37,7 @@ class ModelConfig:
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
     p: float = 50e5  # Operating pressure [Pa]
+    p_perm: float = 1e5 # Permeate pressure [Pa]
     p_stand: float = 1e5 # standard pressure, 1 bar [Pa]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
     
@@ -49,13 +51,13 @@ class ModelConfig:
     tortuosity = 2 # tortuosity of catalyst [-]
 
     particle_diffusivity: np.ndarray = field(
-        default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6]))  # Effective diffusivity per component [m²/s]
+        default_factory=lambda: np.array([2.0e-6, 1.5e-6, 1.5e-6, 1.5e-6, 1.5e-6, 2.0e-6]))  # Effective diffusivity per component [m²/s]
     
     heat_capacity_gas: np.ndarray = field(
-        default_factory=lambda: np.array([48.139, 29.34, 108.95, 79.952, 462.0]))  # [J/(mol K)]
+        default_factory=lambda: np.array([48.139, 29.34, 108.95, 79.952, 462.0, 29.1]))  # [J/(mol K)]
     
     MW: np.ndarray = field(
-        default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3,90.08e-3]))  # Moleculat weight [kg/mol]
+        default_factory=lambda: np.array([44.01e-3, 2.016e-3, 32.04e-3, 18.015e-3, 90.08e-3, 28.01e-3]))  # Moleculat weight [kg/mol]
     
     thermal_conductivity: float = 1.0  # [W/(m K)], rough packed-bed effective value
 
@@ -88,10 +90,10 @@ class ModelConfig:
 
     # Feed composition
     feed_y: np.ndarray = field(
-        default_factory=lambda: np.array([0.25, 0.75, 0.0, 0.0, 0.0])) # Feed mole fractions [-]
+        default_factory=lambda: np.array([0.25, 0.75, 0.0, 0.0, 0.0, 0.0])) # Feed mole fractions [-]
     
     # Solver settings
-    method: str = "radauF"
+    method: str = "Radau"
     tol: float = 1.0e-6  # tolerance for convergence
     maxfev: int = 30    # maximum number of function evaluations
 
@@ -117,9 +119,13 @@ class ModelConfig:
         return c_total * feed_y
     
     @property
-    def perm_inlet(self) -> np.ndarray:
+    def perm_inlet(self):
+
         state = np.zeros(self.n_c)
+
+        state[:self.n_species] = self.permeate_inlet_concentration
         state[self.iT] = self.T
+
         return state
     
     @property
@@ -204,3 +210,10 @@ class ModelConfig:
     def D_eff(self) -> float:
         return (self.eps_p * self.particle_diffusivity[1]) / self.tortuosity
     
+    @property
+    def permeate_inlet_concentration(self):
+
+        ctot = self.p_perm/(self.R*self.T)
+
+        return ctot*self.sweep_y
+

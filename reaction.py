@@ -3,13 +3,13 @@ import numpy as np
 from config import ModelConfig
 
 # component order used throughout the model
-SPECIES_LABELS = ("CO2", "H2", "CH3OH", "H2O", "DMC")
+SPECIES_LABELS = ("CO2", "H2", "CH3OH", "H2O", "DMC", "N2")
 
 # stofhiometic coefficients
 STOICH = np.array(
     [
-        [-1.0, -3.0,  1.0,  1.0,  0.0],
-        [-1.0,  0.0, -2.0,  1.0,  1.0],
+        [-1.0, -3.0,  1.0,  1.0,  0.0, 0.0],
+        [-1.0,  0.0, -2.0,  1.0,  1.0, 0.0],
     ]
 )
 
@@ -108,7 +108,7 @@ class ReactionRates:
         
 
         denominator = (1.0 + cfg.k_ads1 * (P_CH3OH / cfg.p_stand) 
-                        + cfg.k_ads2 * (P_CH3OH / cfg.p_stand) * (P_CO2/cfg.p_stand))**3
+                        + cfg.k_ads2 * (P_CH3OH / cfg.p_stand))**3
 
         r_mass = (k2 * cfg.m_cat * driving_force / denominator)
         r_vol = cfg.r2_scale * r_mass * cfg.rho_bulk / cfg.Mw_cat

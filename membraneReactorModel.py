@@ -119,7 +119,16 @@ class MembraneReactorModel:
         J_mem = np.zeros(cfg.n_species, dtype = float)
         mask = P_species != 0.0
 
-        J_mem[mask] = P_species[mask] * (c_ret[mask] - c_perm[mask])
+        ctot_ret = np.sum(c_ret)
+        ctot_perm = np.sum(c_perm)
+
+        y_ret = c_ret/ctot_ret
+        y_perm = c_perm/ctot_perm
+
+        c_mem_ret = y_ret * cfg.p/(cfg.R*T_ret)
+        c_mem_perm = y_perm * cfg.p_perm/(cfg.R*T_perm)
+
+        J_mem[mask] = P_species[mask] * (c_mem_ret[mask]- c_mem_perm[mask])
 
         # Positive q_mem means heat retentate -> permeate
         q_mem = cfg.U_mem * (T_ret - T_perm)  # [W/m2]
