@@ -76,14 +76,14 @@ class ModelConfig:
     r1_scale: float = 1.0 # optional scaling rate [-]
 
     # Kinetic Parameters: Reaction 2 (CO2 + 2MeOH <-> DMC + H2O) (ibrahim et al.)  
-    T_ref_2: float = 298.15 # Reference temperature [K]
+    T_ref_2: float = 403.15 # Reference temperature [K]
     k2_pre: float = 0.0133  # Pre-exponential factor [s⁻¹]
     k_ads1: float = 9 # adsorption parameter [-]
     k_ads2: float = 109 # adsorption parameter [-]
     dH_DMC: float = -20.10e3 # reaction enthalpy [J/mol]
     dG_DMC: float = 31.50e3 # Gibbs free energy change [J/mol]
     drC_p: float = -170.23
-    Ea_DMC: float = 106e3  # Activation energy [J/mol]
+    Ea_DMC: float = 117e3  # Activation energy [J/mol]
     r2_scale: float = 1.0 # optional scaling rate [-]
 
     # Feed composition
@@ -91,7 +91,7 @@ class ModelConfig:
         default_factory=lambda: np.array([0.25, 0.75, 0.0, 0.0, 0.0])) # Feed mole fractions [-]
     
     # Solver settings
-    method: str = "BDF"
+    method: str = "radauF"
     tol: float = 1.0e-6  # tolerance for convergence
     maxfev: int = 30    # maximum number of function evaluations
 

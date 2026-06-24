@@ -96,7 +96,7 @@ class ReactionRates:
         P_pa, _P_bar, _y = self.partial_pressures(c_species)
 
         P_CO2 = np.maximum(P_pa[..., 0], 0.0)
-        P_CH3OH = np.maximum(P_pa[..., 2], 0.0)
+        P_CH3OH = np.maximum(P_pa[..., 2], 1e-8)
         P_H2O = np.maximum(P_pa[..., 3], 0.0)
         P_DMC = np.maximum(P_pa[..., 4], 0.0)
 
@@ -106,11 +106,11 @@ class ReactionRates:
         driving_force = ((P_CO2 / cfg.p_stand) * (P_CH3OH / cfg.p_stand) ** 2
                         - ((P_DMC / cfg.p_stand) * (P_H2O / cfg.p_stand)) / K_eq)
         
-        denominator = np.maximum((P_CH3OH/cfg.p_stand) 
-                        * (1.0 + cfg.k_ads1 * (P_CH3OH / cfg.p_stand) 
-                        + cfg.k_ads2 * (P_CH3OH / cfg.p_stand) * (P_CO2/cfg.p_stand)), EPS) 
 
-        r_mass = k2 * driving_force / denominator
+        denominator = (1.0 + cfg.k_ads1 * (P_CH3OH / cfg.p_stand) 
+                        + cfg.k_ads2 * (P_CH3OH / cfg.p_stand) * (P_CO2/cfg.p_stand))**3
+
+        r_mass = (k2 * cfg.m_cat * driving_force / denominator)
         r_vol = cfg.r2_scale * r_mass * cfg.rho_bulk / cfg.Mw_cat
         return np.nan_to_num(r_vol, nan=0.0, posinf=1.0e20, neginf=-1.0e20)
     
