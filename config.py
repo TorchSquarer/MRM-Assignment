@@ -6,7 +6,7 @@ import numpy as np
 @dataclass
 class ModelConfig:
     # Reactor geometry
-    length: float = 10.0 # length [m]
+    length: float = 3.0 # length [m]
     R_ret: float = 10.0e-3 # Radius of retentate [m]
     R_perm: float = R_ret + 5.0e-4  # Radius of permeate [m]
     R_out: float = 12e-3 # Outer reactor radius [m]
@@ -26,8 +26,8 @@ class ModelConfig:
         return self.n_c - 1
 
     # Membrane and flow parameters
-    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0, 0.0048, 0.0, 0.0])) # Membrane permeability [m/s]
-    v_ret: float = 0.05 # Retentate velocity [m/s]                                                                               
+    P_membrane: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0, 0.01, 0.0, 0.0])) # Membrane permeability [m/s]
+    v_ret: float = 0.01 # Retentate velocity [m/s]                                                                               
     v_perm: float = 0.10 # Permeate velocity [m/s]  
     sweep_y: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1.0])) # Sweep gas mole fractions [-]
     U_mem: float = 0.0 # overall heat-transfer coefficient [W/(m2 K)]
@@ -36,7 +36,7 @@ class ModelConfig:
     # Operating conditions
     T: float = 573.15  # Operating temperature [K]
     R: float = 8.314  # Ideal gas constant [J/(mol·K)]
-    p: float = 50e5  # Operating pressure [Pa]
+    p: float = 200e5  # Operating pressure [Pa]
     p_perm: float = 1e5 # Permeate pressure [Pa]
     p_stand: float = 1e5 # standard pressure, 1 bar [Pa]
     mu: float = 2.0e-5  # Gas viscosity [Pa·s]
