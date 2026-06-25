@@ -266,5 +266,5 @@ class MembraneReactorModel:
     def thermal_peclet(self):
         cfg = self.cfg
         c_ret, T_ret, c_perm, T_perm = self.fields()
-        Pe_T = cfg.rho_gas * self.rhoCp_retentate(c_ret, cfg) * cfg.v_ret * cfg.length / cfg.thermal_conductivity
+        Pe_T = cfg.rho_gas * self.rhoCp_retentate(c_ret) * cfg.v_ret * cfg.length / cfg.thermal_conductivity
         return Pe_T
