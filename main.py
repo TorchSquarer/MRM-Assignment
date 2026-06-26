@@ -2,6 +2,16 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
+plt.style.use('seaborn-v0_8-paper')
+plt.rcParams.update({
+    'font.size':        14,
+    'axes.titlesize':   18,
+    'axes.labelsize':   16,
+    'xtick.labelsize':  13,
+    'ytick.labelsize':  13,
+    'legend.fontsize':  13,
+    'figure.titlesize': 20,
+})
 import pandas as pd
 
 from config import ModelConfig
