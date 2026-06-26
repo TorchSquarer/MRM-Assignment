@@ -86,14 +86,14 @@ class MembraneReactorModel:
 
         return source, q_rxn, float(r1[0]), float(r2[0])
 
-    def rhoCp_retentate(self, c_ret: np.ndarray) -> float:
+    def rhoCp_retentate(self, c_ret: np.ndarray):
         cfg = self.cfg
 
         c_ret = np.asarray(c_ret, dtype=float)
-        gas = cfg.eps_bed * float(c_ret @ cfg.heat_capacity_gas)
+        gas = cfg.eps_bed * (c_ret @ cfg.heat_capacity_gas)
         solid = cfg.rho_bulk * cfg.Cp_solid
 
-        return max(gas + solid, cfg.rhoCp_floor)
+        return np.maximum(gas + solid, cfg.rhoCp_floor)
 
 
     def rhoCp_permeate(self, c_perm: np.ndarray) -> float:
