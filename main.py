@@ -10,7 +10,7 @@ from reaction import SPECIES_LABELS
 
 cfg = ModelConfig()
 
-def run_simulation(T=None, p=None, P_membrane=None, v_ret=None):
+def run_simulation(T=None, p=None, P_membrane=None, v_ret=None, v_perm=None):
     cfg = ModelConfig()
 
     if T is not None:
@@ -24,6 +24,9 @@ def run_simulation(T=None, p=None, P_membrane=None, v_ret=None):
 
     if v_ret is not None:
         cfg.v_ret = v_ret
+
+    if v_perm is not None:
+        cfg.v_perm = v_perm
 
     model = MembraneReactorModel(cfg)
     model.solve()
@@ -105,15 +108,25 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-cfg = ModelConfig()
+plt.figure(figsize=(7, 5))
+
+for v_perm in velocity:
+    z, Y_DMC_percent = run_simulation(T=573.15, p=200e5, P_membrane=cfg.P_membrane, v_ret=cfg.v_ret, v_perm=v_perm)
+    plt.plot(z, Y_DMC_percent, label=f"{v_perm} m/s")
+
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Y_DMC [%]")
+plt.title("Influence of permeate velocity on DMC yield")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 model = MembraneReactorModel(cfg)
 model.solve()
 
 c_ret, T_ret, c_perm, T_perm = model.fields()
-
 z = model.z_c
-
 species = list(model.species_labels)
 
 plt.figure(figsize=(8,5))
@@ -123,227 +136,210 @@ plt.xlabel("Reactor length z [m]")
 plt.ylabel("Temperature [K]")
 plt.title("Temperature profiles")
 plt.grid(True)
-
 plt.show()
 
 print("pressure drop", cfg.ergun_pressure_gradient)
 print("final pressure", cfg.pressure_outlet)
 
-# fig, ax = plt.subplots(1, 2, figsize=(12, 8))
+fig, ax = plt.subplots(1, 2, figsize=(12, 8))
 
-# for i, sp in enumerate(species):
-#     ax[0].plot(z, c_ret[:,i], label=sp)
-# ax[0].set_xlabel("Reactor length z [m]")
-# ax[0].set_ylabel("Concentration [mol/m³]")
-# ax[0].set_title("retenate concentration concentrations")
-# ax[0].grid(True)
-# ax[0].legend()
+for i, sp in enumerate(species):
+    ax[0].plot(z, c_ret[:,i], label=sp)
+ax[0].set_xlabel("Reactor length z [m]")
+ax[0].set_ylabel("Concentration [mol/m³]")
+ax[0].set_title("retenate concentration concentrations")
+ax[0].grid(True)
+ax[0].legend()
 
-# c_CO2_in = cfg.inlet_concentration[0]
-# c_DMC = c_ret[:, 4]
-# Y_DMC = c_DMC / c_CO2_in
-# Y_DMC_percent = Y_DMC * 100
+c_CO2_in = cfg.inlet_concentration[0]
+c_DMC = c_ret[:, 4]
+Y_DMC = c_DMC / c_CO2_in
+Y_DMC_percent = Y_DMC * 100
 
-# ax[1].plot(z, Y_DMC_percent, label="y_DMC")
-# ax[1].set_xlabel("Reactor length z [m]")
-# ax[1].set_ylabel("Yield DMC [mol/m³]")
-# ax[1].set_title("retenate concentration concentrations")
-# ax[1].grid(True)
-# ax[1].legend()
+ax[1].plot(z, Y_DMC_percent, label="y_DMC")
+ax[1].set_xlabel("Reactor length z [m]")
+ax[1].set_ylabel("Yield DMC [mol/m³]")
+ax[1].set_title("DMC yield")
+ax[1].grid(True)
+ax[1].legend()
 
-# plt.tight_layout()
-# plt.show()
+plt.tight_layout()
+plt.show()
 
-# def run_case(name, feed_y, r1_scale, r2_scale, T, P, P_membrane):
-#     cfg = ModelConfig()
+def run_case(name, feed_y, r1_scale, r2_scale, T, P, P_membrane):
+    cfg = ModelConfig()
        
-#     cfg.r1_scale = r1_scale
-#     cfg.r2_scale = r2_scale
+    cfg.r1_scale = r1_scale
+    cfg.r2_scale = r2_scale
 
-#     cfg.feed_y = np.array(feed_y, dtype=float)
-#     cfg.feed_y /= cfg.feed_y.sum()
+    cfg.feed_y = np.array(feed_y, dtype=float)
+    cfg.feed_y /= cfg.feed_y.sum()
 
-#     cfg.T = T
-#     cfg.p = P
-#     cfg.P_membrane = np.array(P_membrane, dtype=float)
+    cfg.T = T
+    cfg.p = P
+    cfg.P_membrane = np.array(P_membrane, dtype=float)
 
-#     model = MembraneReactorModel(cfg)
-#     result = model.solve()
+    model = MembraneReactorModel(cfg)
+    result = model.solve()
 
-#     c_ret, T_ret, c_perm, T_perm = model.fields()
-#     species = list(model.species_labels)
-#     z = model.z_c
+    c_ret, T_ret, c_perm, T_perm = model.fields()
+    species = list(model.species_labels)
+    z = model.z_c
 
-#     table = pd.DataFrame({
-#         "inlet retentate [mol/m3]": cfg.inlet_concentration,
-#         "outlet retentate [mol/m3]": c_ret[-1, :],
-#         "outlet permeate [mol/m3]": c_perm[-1, :],
-#         "retentate change [mol/m3]": c_ret[-1, :] - cfg.inlet_concentration,
-#     }, index=species)
+    table = pd.DataFrame({
+        "inlet retentate [mol/m3]": cfg.inlet_concentration,
+        "outlet retentate [mol/m3]": c_ret[-1, :],
+        "outlet permeate [mol/m3]": c_perm[-1, :],
+        "retentate change [mol/m3]": c_ret[-1, :] - cfg.inlet_concentration,
+    }, index=species)
 
-#     plt.figure(figsize=(8,5))
-#     for i, sp in enumerate(species):
-#         plt.plot(z, c_ret[:,i], label=sp)
-#     plt.xlabel("Reactor length z [m]")
-#     plt.ylabel("Concentration [mol/m³]")
-#     plt.title("retenate concentration concentrations")
-#     plt.grid(True)
-#     plt.legend()
-#     plt.show()
+    plt.figure(figsize=(8,5))
+    for i, sp in enumerate(species):
+        plt.plot(z, c_ret[:,i], label=sp)
+    plt.xlabel("Reactor length z [m]")
+    plt.ylabel("Concentration [mol/m³]")
+    plt.title("retenate concentration concentrations")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
-#     print("\n" + "=" * 80)
-#     print(name)
-#     print("success:", result.success)
-#     print("message:", result.message)
-#     print("nfev:", result.nfev)
-#     print(table.to_string(float_format=lambda x: f"{x:.4e}"))
+    print("\n" + "=" * 80)
+    print(name)
+    print("success:", result.success)
+    print("message:", result.message)
+    print("nfev:", result.nfev)
+    print(table.to_string(float_format=lambda x: f"{x:.4e}"))
 
-#     return cfg, model, result, c_ret, T_ret, c_perm, T_perm
+    return cfg, model, result, c_ret, T_ret, c_perm, T_perm
 
+cases = {
+    "R1 only without membrane: CO2 + H2 feed": {
+        "feed_y": [0.25, 0.75, 0.0, 0.0, 0.0, 0.0],
+        "r1_scale": 1.0,
+        "r2_scale": 0.0,
+        "T": cfg.T,
+        "P": 50e5,
+        "P_membrane": [0, 0, 0, 0, 0, 0],
 
+    },
+    "R2 only with membrane : CO2 + CH3OH feed": {
+        "feed_y": [1/3, 0.0, 2/3, 0.0, 0.0, 0.0],
+        "r1_scale": 0.0,
+        "r2_scale": 1.0,
+        "T": 400,
+        "P": 200e5,
+        "P_membrane": cfg.P_membrane,
+    },
+    "R2 only without membrane : CO2 + CH3OH feed": {
+        "feed_y": [1/3, 0.0, 2/3, 0.0, 0.0, 0.0],
+        "r1_scale": 0.0,
+        "r2_scale": 1.0,
+        "T": 400,
+        "P": 200e5,
+        "P_membrane": [0,0,0,0,0,0]
 
+    },
+    "R1 + R2: CO2 + H2 feed": {
+        "feed_y": [0.25, 0.75, 0.0, 0.0, 0.0, 0.0],
+        "r1_scale": 1.0,
+        "r2_scale": 1.0,
+        "T": cfg.T,
+        "P": cfg.p,
+        "P_membrane": cfg.P_membrane,
+    },
+}
 
-# cases = {
-#     # "R1 only without membrane: CO2 + H2 feed": {
-#     #     "feed_y": [0.25, 0.75, 0.0, 0.0, 0.0, 0.0],
-#     #     "r1_scale": 1.0,
-#     #     "r2_scale": 0.0,
-#     #     "T": cfg.T,
-#     #     "P": cfg.p,
-#     #     "P_membrane": [0, 0, 0, 0, 0, 0],
+results = {
+    name: run_case(name, **settings)
+    for name, settings in cases.items()
+}
 
-#     },
-#     "R2 only with membrane : CO2 + CH3OH feed": {
-#         "feed_y": [1/3, 0.0, 2/3, 0.0, 0.0, 0.0],
-#         "r1_scale": 0.0,
-#         "r2_scale": 1.0,
-#         "T": 400,
-#         "P": 200e5,
-#         "P_membrane": cfg.P_membrane,
-#     },
-#     "R2 only without membrane : CO2 + CH3OH feed": {
-#         "feed_y": [1/3, 0.0, 2/3, 0.0, 0.0, 0.0],
-#         "r1_scale": 0.0,
-#         "r2_scale": 1.0,
-#         "T": 400,
-#         "P": 200e5,
-#         "P_membrane": [0,0,0,0,0,0]
+n_species = cfg.n_species
 
-    # },
-#     "R1 + R2: CO2 + H2 feed": {
-#         "feed_y": [0.25, 0.75, 0.0, 0.0, 0.0, 0.0],
-#         "r1_scale": 1.0,
-#         "r2_scale": 1.0,
-#         "T": cfg.T,
-#         "P": cfg.p,
-#         "P_membrane": cfg.P_membrane,
-#     },
-# }
+r1, r2 = model.reac.reaction_rates(c_ret, T_ret)
+source = model.reac.species_source(c_ret, T_ret)
+r_CO2_consumption = -source[:, 0]
 
-# results = {
-#     name: run_case(name, **settings)
-#     for name, settings in cases.items()
-# }
+P_species = np.asarray(cfg.P_species, dtype=float)
+J_mem = P_species[None, :] * (c_ret - c_perm)  # [mol/(m2 s)]
 
+c_in = cfg.inlet_concentration
 
-# c_ret, T_ret, c_perm, T_perm = model.fields()
-# z = model.z_c
-# species = list(model.species_labels)
-# n_species = cfg.n_species
+D_eff_CO2 = cfg.eps_p * cfg.particle_diffusivity[0] / cfg.tortuosity
 
-# r1, r2 = model.reac.reaction_rates(c_ret, T_ret)
-# source = model.reac.species_source(c_ret, T_ret)
+# Mears criterion:
+mears_r1, mears_r2 = model.mears_criterion()
+wp_r1, wp_r2 = model.weisz_prater_criterion()
 
-# k2_profile = model.reac.k_eff_r2(T_ret)
-# k_eq = model.reac.k2_eq_T(T_ret)
+# 1. Retentate concentrations
+plt.figure(figsize=(8,5))
+for i, name in enumerate(species):
+    plt.plot(z, c_ret[:, i], label=f"{name} ret")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Retentate concentration [mol/m³]")
+plt.title("Retentate concentration profiles")
+plt.grid(True)
+plt.legend()
 
-# c_in = cfg.inlet_concentration
+# 2. Permeate concentrations
+plt.figure(figsize=(8,5))
+for i, name in enumerate(species):
+    plt.plot(z, c_perm[:, i], label=f"{name} perm")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Permeate concentration [mol/m³]")
+plt.title("Permeate concentration profiles")
+plt.grid(True)
+plt.legend()
 
-# # voor de plots, bereken de mole fractions en partiele drukken van H2O in retentate en permeate
-# y_ret = c_ret / np.maximum(
-#     np.sum(c_ret, axis=1, keepdims=True),
-#     1e-12
-# )
+# 3. Membrane flux
+plt.figure(figsize=(8,5))
+for i, name in enumerate(species):
+    if np.any(np.abs(J_mem[:, i]) > 1e-20):
+        plt.plot(z, J_mem[:, i], label=f"{name}")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Membrane flux [mol/(m² s)]")
+plt.title("Membrane flux profiles")
+plt.grid(True)
+plt.legend()
 
-# y_perm = c_perm / np.maximum(
-#     np.sum(c_perm, axis=1, keepdims=True),
-#     1e-12
-# )
+# 4. Reaction rates
+plt.figure(figsize=(8,5))
+plt.plot(z, r1, label="r1: methanol synthesis")
+plt.plot(z, r2, label="r2: DMC synthesis")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Rate [mol/(m³ s)]")
+plt.title("Reaction-rate profiles")
+plt.grid(True)
+plt.legend()
 
-# p_h2o_ret = y_ret[:, 3] * cfg.p / 1e5      # bar
-# p_h2o_perm = y_perm[:, 3] * cfg.p_perm / 1e5   # bar
-# fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+# 5. Temperature profile
+plt.figure(figsize=(8,5))
+plt.plot(z, T_ret, label="T retentate")
+plt.plot(z, T_perm, label="T permeate")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Temperature [K]")
+plt.title("Temperature profiles")
+plt.grid(True)
+plt.legend()
 
-# # -------------------------------------------------
-# # (1) Sweep-gas side concentrations
-# # -------------------------------------------------
+# 6. Criteria and conversions
+plt.figure(figsize=(8,5))
+plt.plot(z, mears_r1, label="Mears r1")
+plt.plot(z, mears_r2, label="Mears r2")
+plt.axhline(0.15, linestyle=":", label="Mears guideline 0.15")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Criterion value [-]")
+plt.title("External mass-transfer criteria")
+plt.grid(True)
+plt.legend()
 
-# axs[0,0].plot(z, c_perm[:,3], label="H2O")
-# axs[0,0].plot(z, c_perm[:,5], label="N2")
-
-# axs[0,0].set_xlabel("Reactor length z [m]")
-# axs[0,0].set_ylabel("Concentration [mol/m³]")
-# axs[0,0].set_title("Permeate concentrations")
-# axs[0,0].grid(True)
-# axs[0,0].legend()
-
-# # -------------------------------------------------
-# # (2) Reaction rates
-# # -------------------------------------------------
-
-# axs[0,1].plot(z, r1, label="r1")
-# axs[0,1].plot(z, r2, label="r2")
-
-# axs[0,1].set_xlabel("Reactor length z [m]")
-# axs[0,1].set_ylabel("Rate [mol/m³ s]")
-# axs[0,1].set_title("Reaction-rate profiles")
-# axs[0,1].grid(True)
-# axs[0,1].legend()
-
-# # -------------------------------------------------
-# # (3) H2O partial pressures
-# # -------------------------------------------------
-
-# axs[1,0].plot(z, p_h2o_ret, label="Retentate")
-# axs[1,0].plot(z, p_h2o_perm, label="Permeate")
-
-# axs[1,0].set_xlabel("Reactor length z [m]")
-# axs[1,0].set_ylabel("H2O partial pressure [bar]")
-# axs[1,0].set_title("Water partial-pressure driving force")
-# axs[1,0].grid(True)
-# axs[1,0].legend()
-
-# # -------------------------------------------------
-# # (4) H2O mole fractions
-# # -------------------------------------------------
-
-# delta_p_h2o = p_h2o_ret - p_h2o_perm
-
-# axs[1,1].plot(z, delta_p_h2o)
-
-# axs[1,1].set_xlabel("Reactor length z [m]")
-# axs[1,1].set_ylabel("Δp_H2O [bar]")
-# axs[1,1].set_title("Water driving force")
-# axs[1,1].grid(True)
-
-# plt.tight_layout()
-# plt.show()
-
-# # plt.figure(figsize=(8, 5))
-# # plt.plot(z, k_eq, label="k_eq")
-# # plt.xlabel("Reactor length z [m]")
-# # plt.ylabel("k_eq [mol/m3s]")
-# # plt.title("Reaction-rate profiles")
-# # plt.grid(True)
-# # plt.legend()
-# # plt.show()
-
-# concentration_table = pd.DataFrame({
-#     "inlet retentate [mol/m3]": c_in,
-#     "outlet retentate [mol/m3]": c_ret[-1, :],
-#     "outlet permeate [mol/m3]": c_perm[-1, :],
-#     "retentate change [mol/m3]": c_ret[-1, :] - c_in,
-# }, index=species)
-
-# print("\n=== COMPONENT CONCENTRATIONS ===")
-# print(concentration_table.to_string())
+plt.figure(figsize=(8,5))
+plt.plot(z, wp_r1, label="Weisz-Prater r1")
+plt.plot(z, wp_r2, label="Weisz-Prater r2")
+plt.axhline(1, linestyle=":", label="WP guideline 1")
+plt.xlabel("Reactor length z [m]")
+plt.ylabel("Criterion value [-]")
+plt.title("Internal mass-transfer criteria")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
